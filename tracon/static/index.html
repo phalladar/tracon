@@ -98,6 +98,8 @@ main { padding: 10px 16px 24px; }
 #chart .row { cursor: pointer; }
 #chart .row:focus { outline: none; }
 #chart .row:focus .rowbg { stroke: var(--edit); stroke-width: 1; }
+/* drawn over the rows; must not take the pointer from the bars under them */
+#chart .guide { pointer-events: none; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 12px; color: var(--text-secondary); border-top: 1px solid var(--border); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .sw { width: 14px; height: 8px; border-radius: 2px; display: inline-block; }
@@ -428,11 +430,11 @@ function renderTimeline() {
   // now / replay line
   const nowT = S.at ? +S.at : d.now;
   if (inView(nowT, nowT)) {
-    svg.append(svgEl("line", { x1: x(nowT), x2: x(nowT), y1: TOP - 8, y2: H - 6, stroke: css("--text-secondary"), "stroke-width": 1 }));
+    svg.append(svgEl("line", { class: "guide", x1: x(nowT), x2: x(nowT), y1: TOP - 8, y2: H - 6, stroke: css("--text-secondary"), "stroke-width": 1 }));
   }
   // crosshair
-  S.cross = svgEl("line", { y1: TOP - 8, y2: H - 6, stroke: css("--text-muted"), "stroke-width": 1, visibility: "hidden" });
-  S.crossLabel = svgEl("text", { y: 12, "text-anchor": "middle", class: "strong", visibility: "hidden" });
+  S.cross = svgEl("line", { class: "guide", y1: TOP - 8, y2: H - 6, stroke: css("--text-muted"), "stroke-width": 1, visibility: "hidden" });
+  S.crossLabel = svgEl("text", { y: 12, "text-anchor": "middle", class: "strong guide", visibility: "hidden" });
   svg.append(S.cross, S.crossLabel);
   S.xinv = (px) => t0 + ((px - LABEL_W) / (W - LABEL_W - PAD_R)) * (t1 - t0);
 }
@@ -599,6 +601,8 @@ function render() {
   renderHeader();
   if (S.view === "timeline") renderTimeline();
   else renderFiles();
+  // The rebuild removed the element under the pointer; point the tip at its replacement.
+  if (S.pointer && $("tip").style.display === "block") tipAt(document.elementFromPoint(S.pointer.clientX, S.pointer.clientY), S.pointer);
 }
 
 function showTip(target, ev) {
@@ -621,10 +625,11 @@ function showTip(target, ev) {
   tip.style.top = Math.max(8, top) + "px";
 }
 
-document.addEventListener("pointermove", (ev) => {
-  const t = ev.target.closest ? ev.target.closest("[data-tip]") : null;
-  showTip(t, ev);
-});
+function tipAt(target, ev) {
+  showTip(target && target.closest ? target.closest("[data-tip]") : null, ev);
+}
+document.addEventListener("pointermove", (ev) => { S.pointer = ev; tipAt(ev.target, ev); });
+document.documentElement.addEventListener("pointerleave", () => { S.pointer = null; showTip(null); });
 
 const chart = $("chart");
 chart.addEventListener("pointermove", (ev) => {
