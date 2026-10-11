@@ -30,6 +30,31 @@ def test_rebuilding_the_table_keeps_the_mouse_hover(tmp_path):
     assert asyncio.run(run()) == 4
 
 
+def test_rebuilding_the_table_keeps_the_horizontal_scroll(tmp_path):
+    """In a narrow window the user scrolls right to see the last columns; a tick must not snap back."""
+    demo = Demo(root=str(tmp_path))
+
+    async def run():
+        app = LaneApp([demo.ref], at=None, thresholds=Thresholds(), notify=False, judge=demo.judge,
+                      title_prefix=None, prober=demo.prober)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.5)
+            table = app.query_one("#agents")
+            assert table.max_scroll_x > 0
+            table.scroll_to(x=40, animate=False, immediate=True)
+            seen = []
+            app.render_table()  # rows unchanged: updated in place
+            seen.append(table.scroll_x)  # before any repaint, so no frame snaps to the left
+            app._order = []  # force a full rebuild, as when an agent appears or rows reorder
+            app.render_table()
+            seen.append(table.scroll_x)
+            await pilot.pause(0.2)
+            seen.append(table.scroll_x)
+            return seen
+
+    assert asyncio.run(run()) == [40, 40, 40]
+
+
 def test_d_dismisses_the_drift_and_d_again_restores_it(tmp_path):
     demo = Demo(root=str(tmp_path))
     drifter = "a2b84f61"  # the demo's agent restyling the admin pages

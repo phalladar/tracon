@@ -960,14 +960,11 @@ class LaneApp(App):
         rows = sorted(self.statuses.values(), key=lambda s: s.sort_key())
         if self.hide_done:
             rows = [r for r in rows if not r.finished]
-        hover = table.hover_coordinate  # clear() resets it to the first row; the mouse hasn't moved
-        table.clear()
-        self._order = []
         lstate, lsev, lnow = self.lead_row()
         lead_ctx = [c for t, c in self.session.lead.ctx if self.at is None or t <= self.at]
         lead_events = list(iter_until(self.session.lead.events, self.at))
         lead_age = ((self.at or datetime.now(timezone.utc)) - lead_events[-1].ts).total_seconds() if lead_events else 0
-        table.add_row(
+        cells: list[tuple[str, list[Text]]] = [(LEAD_ID, [
             Text(""),
             Text("◆", style="bold magenta"),
             Text(lstate, style=SEV_STYLE[lsev]),
@@ -979,13 +976,11 @@ class LaneApp(App):
             Text(""),
             ctx_bar(lead_ctx[-1], self.th) if lead_ctx else Text(""),
             Text(""), Text(""), Text(""), Text(""),
-            key=LEAD_ID,
-        )
-        self._order.append(LEAD_ID)
+        ])]
         for st in rows:
             sev = SEV_STYLE[st.severity]
             off = f" ({len(st.off_brief)}⚑)" if st.off_brief else ""
-            table.add_row(
+            cells.append((st.agent.id, [
                 Text(""),
                 Text(st.icon),
                 Text(st.state, style=sev),
@@ -1000,15 +995,40 @@ class LaneApp(App):
                 Text(str(st.commits)),
                 Text(str(st.lead_msgs or ""), style="magenta"),
                 flags_text(st),
-                key=st.agent.id,
-            )
-            self._order.append(st.agent.id)
+            ]))
+        if [key for key, _ in cells] == self._order:
+            # Same rows in the same order (most ticks): update in place, so the scroll position,
+            # cursor and hover never move. Clearing would repaint one frame scrolled to the left.
+            columns = list(table.columns)
+            for key, row in cells:
+                for col, new in zip(columns[1:], row[1:]):  # the mark column belongs to _mark_cursor
+                    old = table.get_cell(key, col)
+                    if old.plain != new.plain or old.style != new.style or old.spans != new.spans:
+                        table.update_cell(key, col, new, update_width=True)
+            return
+        hover = table.hover_coordinate  # clear() resets it to the first row; the mouse hasn't moved
+        scroll = table.scroll_offset  # and scrolls back to the top left
+        table.clear()
+        self._order = []
+        for key, row in cells:
+            table.add_row(*row, key=key)
+            self._order.append(key)
+        table.scroll_to(scroll.x, scroll.y, animate=False, immediate=True)
         if selected in self._order:
             table.move_cursor(row=self._order.index(selected), animate=False)
         if hover.row < table.row_count:
             table.hover_coordinate = hover
+        self.call_after_refresh(self._restore_scroll, scroll)
         self._marked = None
         self._mark_cursor()
+
+    def _restore_scroll(self, scroll) -> None:
+        """Put the table back where the user scrolled it, keeping the selected row in view.
+        Runs after the refresh too, in case the rebuilt table was narrower until then."""
+        table = self.query_one(DataTable)
+        table.scroll_to(scroll.x, scroll.y, animate=False, immediate=True)
+        if table.row_count:
+            table.move_cursor(row=table.cursor_row, animate=False)
 
     def _mark_cursor(self) -> None:
         """A bar at the left edge of the selected row, so the selection shows without recolouring it."""
