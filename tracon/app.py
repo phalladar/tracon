@@ -518,9 +518,9 @@ class LaneApp(App):
             self._terminal_write("\x1b[22;2t")  # save the terminal's title; cli restores it on exit
         table = self.query_one(DataTable)
         for label, key in [
-            ("", "mark"), ("", "icon"), ("STATE", "state"), ("CARD", "card"), ("MODEL", "model"), ("JUDGE", "judge"), ("NOW", "now"),
-            ("QUIET", "quiet"), ("RUN", "run"), ("CONTEXT", "ctx"), ("EDITS", "edits"), ("CMT", "cmt"),
-            ("◆", "msgs"), ("FLAGS", "flags"),
+            ("", "mark"), ("", "icon"), ("STATE", "state"), ("TASK", "task"), ("MODEL", "model"), ("JUDGE", "judge"), ("NOW", "now"),
+            ("QUIET", "quiet"), ("RUN", "run"), ("CONTEXT", "ctx"), ("EDITS", "edits"), ("COMMITS", "commits"),
+            ("MSGS", "msgs"), ("FLAGS", "flags"),
         ]:
             table.add_column(label, key=key, width=1 if key == "mark" else None)
         self.tick()

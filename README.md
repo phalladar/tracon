@@ -152,6 +152,23 @@ You don't control agents from tracon; it is read-only. When something needs acti
 in your orchestrating session: answer the prompt there, or ask the lead to message, stop or
 re-dispatch the agent.
 
+### Columns
+
+| Column | Shows |
+|---|---|
+| **STATE** | What it is doing now (below) |
+| **TASK** | The description the lead gave the agent; the pinned row is the lead itself |
+| **MODEL** | The model it runs on |
+| **JUDGE** | The judge's latest verdict (below) |
+| **NOW** | Its current or latest action |
+| **QUIET** | Time since its transcript last moved; red past the 5 min idle threshold |
+| **RUN** | Time since it started |
+| **CONTEXT** | Context size in tokens; amber above 300k, red above 450k |
+| **EDITS** | Files it edited; `(n⚑)` counts those the brief never names |
+| **COMMITS** | `git commit` calls it made |
+| **MSGS** | Messages the lead sent it |
+| **FLAGS** | Things worth a look (below) |
+
 ### Colours
 
 | Colour | Browser label | Means |
