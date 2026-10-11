@@ -28,7 +28,11 @@ class SessionRef:
 
     @property
     def project_name(self) -> str:
-        return os.path.basename(self.project_dir)
+        """The project folder's encoded name, less the encoded home directory. Lossy (both '/' and
+        '-' encode as '-'), so views prefer the lead's cwd when the transcript has one."""
+        name = os.path.basename(self.project_dir)
+        home = encode_project(os.path.expanduser("~")) + "-"
+        return name[len(home):] if name.startswith(home) else name.lstrip("-")
 
 
 def find_sessions(project: str | None = None, root: str = PROJECTS_ROOT) -> list[SessionRef]:

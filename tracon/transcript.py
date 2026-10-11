@@ -232,6 +232,15 @@ def _tool_use_event(ts: datetime, b: dict, cwd: str) -> Event:
     elif name in HANDBACK_TOOLS:
         summary = _one_line(inp.get("message", ""), 200)
         key = ""
+    elif name in ("Agent", "Task"):
+        summary = inp.get("description") or _one_line(inp.get("prompt", ""), 120)
+        key = f"{name}:{json.dumps(inp, sort_keys=True)}"
+    elif name == "SendMessage":
+        summary = f"→ {inp.get('to', '?')}: {_one_line(str(inp.get('message', '')), 140)}"
+        key = f"{name}:{json.dumps(inp, sort_keys=True)}"
+    elif name == "TaskStop":
+        summary = f"stop {inp.get('task_id', '?')}"
+        key = f"{name}:{json.dumps(inp, sort_keys=True)}"
     else:
         summary = _one_line(json.dumps(inp), 120)
         key = f"{name}:{json.dumps(inp, sort_keys=True)}"

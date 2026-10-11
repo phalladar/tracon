@@ -178,6 +178,14 @@ def test_loop_same_call_without_edits(b):
     assert "LOOP" in codes(b.assess(3.5))
 
 
+def test_loop_clears_once_it_edits(b):
+    for m in (1, 2, 3):
+        b.bash(m, "python3 tools/run_tests.py")
+    b.edit(4, WT + "/core/ids.gd")
+    b.bash(5, "python3 tools/run_tests.py")
+    assert "LOOP" not in codes(b.assess(5.5))
+
+
 def test_no_loop_when_edits_between(b):
     for m in (1, 2, 3):
         b.bash(m, "python3 tools/run_tests.py")
@@ -353,3 +361,12 @@ def test_session_title_prefers_rename_then_generated_title(b):
     assert b.session().title() == "generated-title"
     b.lead.append({"type": "agent-name", "agentName": "my-renamed-session"})
     assert b.session().title() == "my-renamed-session"
+
+
+def test_coordination_calls_read_as_text_not_json():
+    from tracon.transcript import _tool_use_event
+
+    ev = lambda name, inp: _tool_use_event(T0, {"name": name, "input": inp}, "")  # noqa: E731
+    assert ev("Agent", {"description": "#12 Payment webhooks", "prompt": "Card #12…"}).summary == "#12 Payment webhooks"
+    assert ev("SendMessage", {"to": "a1", "message": "Mock the client."}).summary == "→ a1: Mock the client."
+    assert ev("TaskStop", {"task_id": "a1"}).summary == "stop a1"

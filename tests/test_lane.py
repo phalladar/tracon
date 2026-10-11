@@ -191,3 +191,13 @@ def test_web_snapshot_shapes(lane):
     assert any(m["k"] == "report" for m in a["marks"])
     feed = state.feed("a", at(10))
     assert feed[0]["kind"] == "brief" and feed[-1]["tool"] == "REPORT"
+
+
+def test_project_name_drops_the_home_directory():
+    import os
+
+    from tracon.session import encode_project
+
+    home = encode_project(os.path.expanduser("~"))
+    assert SessionRef(f"/x/projects/{home}-code-acme-shop", "s", 0, 1).project_name == "code-acme-shop"
+    assert SessionRef("/x/projects/-srv-app", "s", 0, 1).project_name == "srv-app"

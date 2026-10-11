@@ -375,8 +375,9 @@ def _loop(tool_uses: list[Event], n: int) -> tuple[str, int] | None:
     counts: dict[str, int] = {}
     worst = None
     for e in tool_uses:
-        if e.tool in EDIT_TOOLS:
+        if e.tool in EDIT_TOOLS:  # an edit breaks the loop: only a run since the last edit counts
             counts.clear()
+            worst = None
             continue
         if not e.key:
             continue
