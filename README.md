@@ -19,26 +19,11 @@ your repository.
 
 ## What it catches
 
-| Problem | How it shows up |
-|---|---|
-| An agent waiting on a permission prompt nobody can answer | **⛔ BLOCKED**: an instant tool call (Edit, Read, `git status`) has been open for 45 s |
-| An agent that went quiet | **⏸ IDLE**: no transcript activity for 5 min and nothing running |
-| A test run that hangs | **🐌 STALLED**: a process runs for 20 min with no file change or commit |
-| Work left behind | **👻 ORPHANED**: a detached process it started is still running after its parent died |
-| Loops | **LOOP**: the same call 3× in a row with no edit in between |
-| Permission denials | **DENIED**, with the classifier's reasons (e.g. "Modify Shared Resources") |
-| Editing the wrong checkout | **OUTSIDE**: a worktree agent edited the main checkout |
-| Working on an old base | **STALE-BASE**: it edited before merging the base branch, after the lead had merged something |
-| Two agents changing one file | **COLLIDE**, plus a file heatmap: concurrent edits that will meet at merge |
-| Ignoring the brief | **BG** (detached or background runs when the brief says foreground), **OFF-BRIEF** files |
-| Drift a rule can't see | **↯ DRIFT / ⟳ STUCK** from an optional LLM check of brief vs. recent activity |
-| Context bloat, uncommitted work | **CTX** above 300k / 450k tokens, **UNCOMMITTED** edits older than 45 min |
-
-A pinned **◆ lead** row shows the orchestrating session itself (running, working, or waiting
-on its agents or on you), so its activity is never mistaken for a subagent's. An agent counts
-as finished when it hands back a report, when the lead is notified it completed, or when it
-ends its turn with a final answer and leaves nothing running. One that stops while its own
-background work is still going shows as **⏳ WAITING**, not done.
+Agents waiting on a permission prompt nobody can answer, agents that went quiet, hung test
+runs, processes left behind, loops, edits to the wrong checkout or on a stale base, two agents
+changing the same file, and (with the optional [judge](#the-judge-optional-on-by-default))
+agents drifting from their brief. [Reading the screen](#reading-the-screen) lists every state
+and flag, what it means, and what to do about it.
 
 While it runs, a macOS notification fires when an agent needs you, and the terminal title is
 set to the watched session's name (`◎ <name>`, mirroring Claude Code's `✳ <name>`), so the
@@ -92,11 +77,92 @@ A good layout: your orchestrating session on one side, `tracon` in a split next 
 - **Replay scrubber**: drag through the run, or press ▶ to play it back.
 - Click an agent for its detail drawer and live activity feed.
 
+## Reading the screen
+
+Each agent row has a **state** (what it is doing now), a **JUDGE** column (the LLM's read of
+whether it is on brief), and any number of **flags** (things worth a look). Press `enter` on a
+row for the detail, which shows the judge's one-line concern and every flag's explanation.
+
+You don't control agents from tracon; it is read-only. When something needs action, you act
+in your orchestrating session: answer the prompt there, or ask the lead to message, stop or
+re-dispatch the agent.
+
+### Colours
+
+| Colour | Browser label | Means |
+|---|---|---|
+| red | Needs you | act now: the agent can't continue, or is doing damage |
+| amber | Check | have a look when you can; often fine |
+| green | Working | nothing to do |
+| grey | Done / Note | finished, or history kept for context |
+
+Once an agent has finished, its flags turn grey: they are history, not action. Only
+**OUTSIDE** and **ORPHAN** stay loud, because what they describe outlives the agent.
+
+### States
+
+| State | Means | What to do |
+|---|---|---|
+| ⛔ **BLOCKED** | An instant call (Edit, Read, `git status`) has been open for 45 s, or a shell call with nothing running: it is waiting on a permission prompt | Answer the prompt if it is showing in your session. If nobody can see it, allow that tool in your permission settings, or have the lead stop and re-dispatch the agent |
+| ⏸ **IDLE** | No transcript activity for 5 min and nothing running | Check the last lines of its feed: it often hit an error or is waiting for input it will never get. Have the lead message it or stop it |
+| 🐌 **STALLED** | A process has run for 20 min with no file change or commit | Usually a hung test or a watcher that never exits. Check the process in the detail; kill it, or have the lead stop the agent |
+| 👻 **ORPHANED** | Silent, but a detached process it started is still running after its parent died | Kill the process (pid in the detail) |
+| ⏳ **WAITING** | Its turn has ended (or it is quiet) while background work it launched still runs | Usually nothing: it resumes when that work finishes. If the work is stuck, see STALLED |
+| … **PENDING** | Replay only: a tool call was open, and without process data tracon can't tell a long run from a prompt | Nothing; go live to see which it is |
+| ▶ **RUNNING** | A tool call is in progress (a build, a test run) | Nothing |
+| ● **WORKING** | Making calls normally | Nothing |
+| ○ **STARTING** | Dispatched, no activity yet | Nothing |
+| ✓ **REPORTED** | Finished: handed back a report, the lead was told it completed, or it ended with a final answer and nothing running | Read its report; merge |
+| ■ **STOPPED** | Stopped by the lead, failed, or killed | Check why if you didn't expect it |
+
+A pinned **◆ lead** row shows the orchestrating session itself (running, working, or waiting
+on its agents or on you), so its activity is never mistaken for a subagent's.
+
+### Flags
+
+| Flag | Means | What to do |
+|---|---|---|
+| **LOOP** | The same call 3× in a row with no edit in between | It is spinning. Have the lead tell it what it is missing, or stop it |
+| **ERRORS** | Its last 3 tool calls failed | Look at the errors in the feed; it may recover on its own |
+| **DENIED** | Tool calls were denied, with the classifier's reasons (e.g. "Modify Shared Resources"). Amber for 30 min, then grey | Decide whether it should have that permission; if so, allow it and have the lead tell it to retry |
+| **OUTSIDE** | A worktree agent edited the main checkout instead of its worktree | Check `git status` in your main checkout and undo or move those edits |
+| **BRANCH** | Its worktree is on a different branch from the one it was given | Check it hasn't committed to the wrong branch before you merge |
+| **STALE-BASE** | It started editing before merging the base branch, after the lead had already merged something | Expect conflicts; have it merge the base before it goes further |
+| **COLLIDE** | Another agent edited the same file while both were running. Press `x` for the heatmap | The second merge may conflict. Decide which agent owns the file, or plan the merge order |
+| **OFF-BRIEF** | It edited files the brief never names (grey: often legitimate) | Glance at the list; worth a question only if the files look unrelated |
+| **BG** | It launched background or detached runs. Amber when its brief says to run in the foreground | If amber, it is ignoring the brief; have the lead remind it |
+| **UNCOMMITTED** | Edits left uncommitted for 45 min | Work at risk if the worktree is cleaned up; have it commit |
+| **CTX** | Context above 300k (amber) or 450k (red) tokens | It will slow down and forget earlier instructions. Have it wrap up and hand back, or re-dispatch the rest fresh |
+| **ORPHAN** | A detached process is still running from its worktree | Kill it once you're sure nothing needs it |
+| **DRIFT** | The judge says it is drifting (below) | See below |
+| **STUCK** | The judge says it is stuck (below) | See below |
+
+### Judge verdicts
+
+The **JUDGE** column shows the latest verdict from the optional [LLM check](#the-judge-optional-on-by-default).
+It is a small model's opinion of the brief against the last 40 actions, so treat it as a
+prompt to look, not a fact. The detail view (`enter`) shows what the agent is doing, the
+judge's concern, and how the verdict has changed over time.
+
+| Verdict | Means | What to do |
+|---|---|---|
+| ✓ **on track** | Its recent actions serve the brief's steps, even if slowly | Nothing |
+| ↯ **drifting** (amber, adds **DRIFT**) | It is doing work the brief doesn't ask for, widening scope, or breaking a rule the brief states (running tests in the background when told to run them in the foreground, editing files it was told not to touch) | Read the concern in the detail. If it is real, have the lead message the agent to get back to the brief, or stop it. If the extra work is fine (your brief was narrower than you meant), ignore it |
+| ⟳ **stuck** (red, adds **STUCK**) | It repeats actions without progress, retries a failure without changing approach, or waits on something that won't come | Find the repeated failure in the feed. Give it the missing piece through the lead, or stop it and re-dispatch with a better brief |
+| ? **unclear** | Too little activity to tell | Nothing; wait |
+| … **judging** | A check is in progress | Nothing |
+| blank | Not judged yet (it needs 5 tool calls), or the judge is off | Nothing |
+
+Verdicts refresh at most every 3 min per agent, after 5 more tool calls. Press `j` to re-check
+the selected agent now, for example after the lead has nudged it. Finished agents are never
+judged; their last verdict stays, greyed out, and DRIFT and STUCK are dropped.
+
 ## The judge (optional, on by default)
 
 Rules catch mechanical failures. For drift, `tracon` periodically asks a small model
 (Claude Haiku 5.5) to read an agent's brief, the lead's messages to it, and its last 40
 actions, and answer `on_track`, `drifting`, `stuck` or `unclear` with a one-line summary.
+See [Judge verdicts](#judge-verdicts) for what each one means.
 
 - **When:** only active agents, at most every 3 min each, and only after 5 new tool calls.
   Finished and idle agents are never judged.
