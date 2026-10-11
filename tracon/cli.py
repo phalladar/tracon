@@ -36,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--at", help="replay as of this local time, e.g. '2026-10-11 01:30' or '01:30'")
     p.add_argument("--list", action="store_true", help="list recent sessions that have subagents")
     p.add_argument("--once", action="store_true", help="print one snapshot and exit (no TUI)")
-    # Off by default: the owner reads card changes in Foreman, and these arrive as Script Editor.
+    # Off by default: they're sent through osascript, so macOS shows them as coming from Script Editor.
     p.add_argument("--notify", action="store_true", help="macOS notifications when an agent needs you (off by default)")
     p.add_argument("--no-notify", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--idle", type=float, default=5, help="minutes of silence before IDLE (default 5)")
