@@ -30,8 +30,8 @@ FLAG_ADVICE = {
     "CTX": "Its context is large; it will slow down and forget instructions. Tell it to wrap up and hand back, "
     "or re-dispatch the rest fresh.",
     "ORPHAN": "A detached process is still running from its worktree. Kill it once nothing needs it.",
-    "DRIFT": "It may be off the brief (see the judge's concern). If so, SendMessage it to get back to the brief.",
-    "STUCK": "It may be stuck (see the judge's concern). Give it the missing piece, or TaskStop it and re-dispatch.",
+    "DRIFT": "It may be off the brief (the judge's concern above). If so, SendMessage it to get back to the brief.",
+    "STUCK": "It may be stuck (the judge's concern above). Give it the missing piece, or TaskStop it and re-dispatch.",
 }
 
 
@@ -42,8 +42,9 @@ def compose(st: Status) -> str:
     if flags:
         lines += ["", "Flags:"] + [f"- {f.code}: {f.detail}" for f in flags]
     j = st.judgment
-    if j is not None and not getattr(j, "error", "") and getattr(j, "concern", ""):
-        lines += ["", f"Judge ({j.verdict}): {j.concern}"]
+    concern = getattr(j, "concern", "") if j is not None and not getattr(j, "error", "") else ""
+    if concern and not any(f.detail == concern for f in flags):  # DRIFT/STUCK already carry it
+        lines += ["", f"Judge ({j.verdict}): {concern}"]
     tips = [STATE_ADVICE[st.state]] if st.state in STATE_ADVICE else []
     tips += [FLAG_ADVICE[c] for c in dict.fromkeys(f.code for f in flags) if c in FLAG_ADVICE]
     if tips:

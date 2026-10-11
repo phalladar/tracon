@@ -12,7 +12,7 @@ from tracon.advice import compose
 from tracon.inbox import find_inbox, send
 from tracon.lane import assess_all
 
-from test_lane import T0, lane  # noqa: F401  (fixture)
+from test_lane import T0, lane, ts  # noqa: F401  (fixture)
 
 
 @pytest.fixture
@@ -85,3 +85,18 @@ def test_compose_names_agent_flags_and_advice(lane):  # noqa: F811
     assert "- LOOP:" in text and "pytest -k parser" in text
     assert "SendMessage it the piece it is missing" in text
     assert "Verify before acting" in text
+
+
+def test_compose_states_judge_concern_once(lane, tmp_path):  # noqa: F811
+    from tracon.judge import Judge, Judgment
+
+    lane.agent("a1", "#12 fix the parser")
+    lane.call("a1", 1, "Bash", {"command": "pytest -k parser"})
+    s = lane.session()
+    concern = "It rewrote the lexer, which the brief never asks for."
+    j = Judge(backend="cli", cache_dir=str(tmp_path / "cache"))
+    j.history["a1"] = [Judgment("drifting", "rewriting lexer", concern, ts(1), 1, made=0.0)]
+    statuses, _ = assess_all(s, T0 + timedelta(minutes=1.5), judge=j)
+    text = compose(statuses["a1"])
+    assert "- DRIFT: " + concern in text
+    assert text.count(concern) == 1
