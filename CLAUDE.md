@@ -24,9 +24,9 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
   knows the transcript format.** Format fixes go here and nowhere else.
 - `session.py`: session discovery (`find_sessions`), `Session` = lead `Transcript` + `Agent`s,
   plus lead-side facts (messages to an agent, `TaskStop`, merges, lane name).
-- `probe.py`: `lsof` + `ps` + `git` per worktree. Process ownership is decided by walking
+- `probe.py`: `lsof` (macOS) or `/proc` (Linux) + `ps` + `git` per worktree. Process ownership is decided by walking
   ancestors: a Claude shell-snapshot or `claude` ancestor means agent; a login/terminal means
-  the user's own shell (ignored); reparented to pid 1 means orphan.
+  the user's own shell (ignored); reparented to pid 1 (or a `systemd --user` subreaper) means orphan.
 - `signals.py`: `assess(agent, session, now, probe)` returns a `Status` (state + flags). Pure:
   no I/O, no clock except `now_utc()` (tests patch it). `now=None` is live; a datetime is
   replay and ignores probes.

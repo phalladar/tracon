@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
+import sys
 import webbrowser
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -229,14 +231,57 @@ def _clip(s: str, n: int) -> str:
 
 
 def notify(title: str, body: str) -> None:
+    """A desktop notification: osascript on macOS, notify-send on Linux, nothing elsewhere."""
+
     def esc(s: str) -> str:
         return s.replace("\\", "\\\\").replace('"', '\\"')
 
-    subprocess.Popen(
-        ["osascript", "-e", f'display notification "{esc(body[:200])}" with title "{esc(title)}" sound name "Ping"'],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    if sys.platform == "darwin":
+        args = ["osascript", "-e", f'display notification "{esc(body[:200])}" with title "{esc(title)}" sound name "Ping"']
+    elif shutil.which("notify-send"):
+        args = ["notify-send", "--app-name=tracon", title, body[:200]]
+    else:
+        return
+    try:
+        subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
+
+def clipboard_command() -> list[str] | None:
+    """The system clipboard tool, if there is one; callers fall back to OSC 52 through the terminal."""
+    if sys.platform == "darwin":
+        return ["pbcopy"]
+    candidates = []
+    if os.environ.get("WAYLAND_DISPLAY"):
+        candidates.append(["wl-copy"])
+    if os.environ.get("DISPLAY"):
+        candidates += [["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]
+    return next((c for c in candidates if shutil.which(c[0])), None)
+
+
+def open_terminal(path: str) -> bool:
+    """Open a new terminal window in `path`: Ghostty if it's installed, else the platform's default."""
+    if sys.platform == "darwin":
+        for app in ("Ghostty", "Terminal"):
+            try:
+                if subprocess.run(["open", "-a", app, path], capture_output=True, timeout=5).returncode == 0:
+                    return True
+            except (OSError, subprocess.SubprocessError):
+                pass
+        return False
+    for args in (["ghostty", f"--working-directory={path}"], ["x-terminal-emulator"]):
+        if shutil.which(args[0]):
+            try:
+                subprocess.Popen(args, cwd=path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                return True
+            except OSError:
+                pass
+    return False
+
+
+# Footer label for `o`: name Ghostty only where it's what opens.
+OPEN_LABEL = "Ghostty" if shutil.which("ghostty") or os.path.isdir("/Applications/Ghostty.app") else "Terminal"
 
 
 # -- screens ----------------------------------------------------------------
@@ -247,7 +292,7 @@ class DetailScreen(Screen):
         Binding("escape,q", "app.pop_screen", "Back"),
         Binding("b", "toggle_brief", "Brief"),
         Binding("e", "app.toggle_tools", "Expand tools"),
-        Binding("o", "app.open_worktree", "Open in Ghostty"),
+        Binding("o", "app.open_worktree", f"Open in {OPEN_LABEL}"),
         Binding("c", "app.copy_path", "Copy path"),
         Binding("n", "app.nudge_lead", "Nudge lead"),
         Binding("d", "app.dismiss", "Dismiss"),
@@ -553,7 +598,7 @@ class LaneApp(App):
         Binding("n", "nudge_lead", "Nudge lead"),
         Binding("d", "dismiss", "Dismiss"),
         Binding("h", "toggle_done", "Hide done"),
-        Binding("o", "open_worktree", "Ghostty"),
+        Binding("o", "open_worktree", OPEN_LABEL),
         Binding("c", "copy_path", "Copy path"),
         Binding("s", "next_session", "Session"),
         Binding("left_square_bracket", "step(-5)", "-5m"),
@@ -933,7 +978,7 @@ class LaneApp(App):
             if box:
                 self.send_nudge(box.socket, text, agent.description)
             else:
-                subprocess.run(["pbcopy"], input=text, text=True)
+                self.copy_text(text)
                 self.notify("no live inbox for the lead; copied the nudge to paste into its session", timeout=5)
         else:
             self.notify("select an agent to nudge the lead about", timeout=3)
@@ -979,13 +1024,25 @@ class LaneApp(App):
     def action_open_worktree(self) -> None:
         agent = self._current_agent()
         if agent and agent.workdir:
-            subprocess.Popen(["open", "-a", "Ghostty", agent.workdir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if not open_terminal(agent.workdir):
+                self.copy_text(agent.workdir)
+                self.notify(f"no terminal to open; copied {agent.workdir}", timeout=4)
 
     def action_copy_path(self) -> None:
         agent = self._current_agent()
         if agent and agent.workdir:
-            subprocess.run(["pbcopy"], input=agent.workdir, text=True)
+            self.copy_text(agent.workdir)
             self.notify(f"copied {agent.workdir}", timeout=2)
+
+    def copy_text(self, text: str) -> None:
+        cmd = clipboard_command()
+        if cmd:
+            try:
+                subprocess.run(cmd, input=text, text=True, timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+            except (OSError, subprocess.SubprocessError):
+                pass
+        self.copy_to_clipboard(text)  # OSC 52: works in most terminals, and over ssh
 
     def action_next_session(self) -> None:
         self.refs = find_sessions() or self.refs

@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 from datetime import datetime, timezone
+from importlib.metadata import version
 from urllib.parse import quote
 
 from .judge import DEFAULT_MODEL, Judge
@@ -30,6 +31,7 @@ def parse_at(s: str) -> datetime:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="tracon", description="Watch Claude Code subagents: who is working, stuck or off track.")
+    p.add_argument("--version", action="version", version=f"%(prog)s {version('tracon')}")
     p.add_argument("command", nargs="?", choices=["tui", "web"], default="tui", help="tui (default) or web: serve the browser view only")
     p.add_argument("--project", "-p", help="project path (default: any project; newest session wins)")
     p.add_argument("--session", "-s", help="session id or prefix (default: the most recently active)")
@@ -37,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--list", action="store_true", help="list recent sessions that have subagents")
     p.add_argument("--once", action="store_true", help="print one snapshot and exit (no TUI)")
     # Off by default: they're sent through osascript, so macOS shows them as coming from Script Editor.
-    p.add_argument("--notify", action="store_true", help="macOS notifications when an agent needs you (off by default)")
+    p.add_argument("--notify", action="store_true", help="desktop notifications when an agent needs you (off by default)")
     p.add_argument("--no-notify", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--idle", type=float, default=5, help="minutes of silence before IDLE (default 5)")
     p.add_argument("--stall", type=float, default=20, help="minutes running without change before STALLED (default 20)")

@@ -9,7 +9,7 @@ merge.
 [![tests](https://github.com/phalladar/tracon/actions/workflows/test.yml/badge.svg)](https://github.com/phalladar/tracon/actions/workflows/test.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-![A terminal split in two. On the left, a Claude Code session is asked to /expedite checkout-v2 and dispatches seven worktree agents. On the right, tracon lists them as they start; over the run one agent is blocked on a permission prompt, one goes idle, one drifts off its brief and one is stuck retrying a failing command. The user selects the stuck agent in tracon, presses m to nudge the lead with a drafted note; it arrives in the Claude Code session, the lead messages the agent, and tracon shows it back on track.](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/hero.gif)
+![A terminal split in two. On the left, a Claude Code session is asked to /expedite checkout-v2 and dispatches seven worktree agents. On the right, tracon lists them as they start; over the run one agent is blocked on a permission prompt, one goes idle, one drifts off its brief and one is stuck retrying a failing command. The user selects the stuck agent in tracon, presses n to nudge the lead with a drafted note; it arrives in the Claude Code session, the lead messages the agent, and tracon shows it back on track.](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/hero.gif)
 
 <sub>Left: a Claude Code session orchestrating seven worktree agents. Right: tracon in a split next to it.
 A made-up run from <code>tracon --demo</code>, sped up.</sub>
@@ -30,12 +30,12 @@ is doing, whether it is holding, whether it has drifted off its brief, and wheth
 are on a collision course in the same file. Run it in a split next to your session.
 
 - **Read-only and local.** It reads the transcripts Claude Code already writes to disk and
-  never writes to your repository. It sends something to a session only when you press `n`
-  and confirm.
+  never writes to your repository. It sends something to a session only when you press `n`.
+  See [What it touches](#what-it-touches).
 - **No setup.** No hooks, no config, no account. Point it at a project, or let it find the
   newest session.
-- **Optional LLM judge.** A small model checks each busy agent against its brief. A busy run
-  stays well under a dollar, with a hard per-run budget. `--no-judge` turns it off.
+- **Optional LLM judge.** A small model checks each busy agent against its brief, for about
+  a tenth of a cent a check, with a hard per-run budget. `--no-judge` turns it off.
 
 > tracon is an independent project. It is not affiliated with, endorsed by or sponsored by
 > Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
@@ -83,13 +83,13 @@ the agent's state, flags, the judge's concern and what to do, and sends it strai
 [Reading the screen](#reading-the-screen) lists every state and flag, what it means, and what
 to do about it.
 
-While it runs, a macOS notification fires when an agent needs you, and the terminal title is
+With `--notify`, a desktop notification fires when an agent needs you. The terminal title is
 set to the watched session's name (`◎ <name>`, mirroring Claude Code's `✳ <name>`), so the
 split reads as part of that session.
 
 ## Install
 
-Requires Python 3.12+. Built and tested on macOS; see [Limitations](#limitations) for Linux.
+Requires Python 3.12+, on macOS or Linux.
 
 ```sh
 uv tool install tracon            # or: pipx install tracon
@@ -131,7 +131,7 @@ A good layout: your orchestrating session on one side, `tracon` in a split next 
 | `d` | dismiss the judge's drifting or stuck verdict on the selected agent (press again to restore) |
 | `n` | nudge the lead about the selected agent: sends a note with its state, flags and what to do (live only) |
 | `[` `]` / `{` `}` | rewind / forward 5 / 30 min (enters replay) · `space` play · `l` back to live |
-| `o` / `c` | open the agent's worktree in a new Ghostty window / copy its path |
+| `o` / `c` | open the agent's worktree in a new terminal window (Ghostty if installed) / copy its path |
 | `h` / `s` / `q` | hide finished agents / next session / quit |
 
 ### Browser view
@@ -262,8 +262,8 @@ See [Judge verdicts](#judge-verdicts) for what each one means.
   One exception: after a drifting or stuck verdict, a message from the lead to that agent
   gets one early re-check as soon as the agent acts on it. Finished and idle agents are
   never judged.
-- **Cost:** about $0.001–0.002 per check. A busy run of five agents over several hours stays
-  well under a dollar. A per-run budget (default $1.00) stops judging when reached, and the
+- **Cost:** about $0.001 per check. On one day of real runs, 85 checks across 15 agents
+  cost $0.09 in all, and the busiest agent under 2 cents. A per-run budget (default $1.00) stops judging when reached, and the
   spend is shown in the header.
 - **Backends:** with `ANTHROPIC_API_KEY` set and the `[api]` extra installed, it uses the
   Anthropic SDK. Otherwise it uses `claude -p` on your Claude Code login, counting against
@@ -303,7 +303,7 @@ messages from your own user on macOS and Linux.
 | `--at TIME` | live | replay as of a local time (`07:20` or `2026-10-11 07:20`) |
 | `--idle MIN` | 5 | silence before IDLE |
 | `--stall MIN` | 20 | running without change before STALLED |
-| `--notify` | off | macOS notifications when an agent needs you |
+| `--notify` | off | desktop notifications when an agent needs you (`osascript` on macOS, `notify-send` on Linux) |
 | `--no-judge` | | turn the LLM check off |
 | `--judge-model` | `claude-haiku-5-5` | model for the check |
 | `--judge-backend` | `auto` | `api` or `cli` |
@@ -313,6 +313,20 @@ messages from your own user on macOS and Linux.
 | `--port` | 8765 | browser view port (the next free one if taken) |
 | `--title-prefix` | `◎ ` | prefix for the terminal title tracon sets to the session's name |
 | `--no-title` | | leave the terminal title alone |
+
+## What it touches
+
+tracon is read-only. This is everything it does outside its own process:
+
+| | |
+|---|---|
+| **Reads** | Transcripts in `~/.claude/projects/`; `~/.claude/sessions/<pid>.json` to find a running lead's inbox (never the `*.key` auth files) |
+| **Runs** | `lsof` (macOS) or `/proc` (Linux), `ps`, and read-only `git` (`status`, `rev-parse`, `rev-list`, `branch`) in each agent's worktree |
+| **Writes** | `~/.cache/tracon/` (judge verdicts and your dismissals). Nothing in your repository or `~/.claude/` |
+| **Sends** | One message to the lead's inbox socket when you press `n`, never on its own and never to a subagent. Judge checks to Anthropic (or `claude -p`), unless `--no-judge` |
+| **Listens** | The browser view, on `127.0.0.1` only, once you open it (`w` or `tracon web`) |
+
+No telemetry, no account, no config files.
 
 ## How it works
 
@@ -351,8 +365,10 @@ tracon/
 - Transcript files are Claude Code internals, not a public API. A format change may break
   parsing; the fix belongs in `transcript.py`. The same goes for the session registry and
   inbox socket used by `n`, in `inbox.py`.
-- Built and tested on macOS. Notifications (`osascript`), copy (`pbcopy`) and "open in
-  Ghostty" are macOS-only; the rest should work on Linux with `lsof` installed.
+- Developed on macOS; tests run on macOS and Linux. On Linux, processes are read from `/proc`
+  (no `lsof` needed), notifications use `notify-send`, copy uses `wl-copy`, `xclip` or `xsel`
+  (else the terminal's OSC 52), and `o` opens Ghostty or `x-terminal-emulator`. Windows isn't
+  supported; WSL should behave like Linux.
 - In replay there is no process data, so a long-running shell call shows as **PENDING**
   rather than RUNNING or BLOCKED.
 

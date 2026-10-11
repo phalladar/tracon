@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 
 SHELLS = {"zsh", "bash", "sh", "fish", "dash", "-zsh", "-bash", "login"}
+# A process that hangs off one of these is the user's own, not an agent's.
+TERMINALS = {
+    "login", "sshd", "tmux", "screen", "zellij",
+    "ghostty", "Ghostty", "Terminal", "iTerm2", "kitty", "alacritty", "Alacritty", "wezterm-gui", "WezTerm",
+    "gnome-terminal-server", "konsole", "xterm", "foot", "tilix", "terminator", "xfce4-terminal", "ptyxis",
+}
 
 
 @dataclass
@@ -113,8 +120,17 @@ class Prober:
 
     @staticmethod
     def _process_cwds() -> dict[int, str]:
+        if sys.platform.startswith("linux"):  # /proc is faster than lsof, and lsof often isn't installed
+            cwds: dict[int, str] = {}
+            for name in os.listdir("/proc"):
+                if name.isdigit():
+                    try:
+                        cwds[int(name)] = os.readlink(f"/proc/{name}/cwd")
+                    except OSError:  # gone, or another user's
+                        pass
+            return cwds
         out = _run(["lsof", "-n", "-P", "-w", "-d", "cwd", "-F", "pn"], timeout=10)
-        cwds: dict[int, str] = {}
+        cwds = {}
         pid = None
         for line in out.splitlines():
             if line.startswith("p"):
@@ -140,7 +156,7 @@ def _is_claude(cmd: str) -> bool:
 
 def _owner(pid: int, table: dict) -> str:
     """'agent' if Claude launched it, 'user' if it hangs off a login or terminal, 'orphan' if
-    its parents are gone (reparented to launchd), '' if unknown."""
+    its parents are gone (reparented to launchd, init, or a `systemd --user` subreaper), '' if unknown."""
     seen = set()
     cur = pid
     while cur in table and cur not in seen:
@@ -150,9 +166,9 @@ def _owner(pid: int, table: dict) -> str:
             return "agent"
         if cur == pid and "/.claude/shell-snapshots/" in cmd:
             return "agent"
-        if _comm(cmd) in ("login", "ghostty", "Ghostty", "tmux", "sshd", "Terminal", "iTerm2") or cmd.startswith("-"):
+        if _comm(cmd) in TERMINALS or cmd.startswith("-"):
             return "user"
-        if ppid == 1:
+        if ppid == 1 or _comm(table.get(ppid, (0, "", ""))[2]) == "systemd":
             return "orphan"
         cur = ppid
     return ""

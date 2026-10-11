@@ -1,0 +1,25 @@
+name: publish
+
+# Publishing a GitHub release builds the package and uploads it to PyPI through trusted
+# publishing (no token in the repo). One-time setup on PyPI: add a trusted publisher for
+# owner phalladar, repo tracon, workflow publish.yml, environment pypi.
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Check the tag matches the version
+        run: test "v$(uv version --short)" = "${{ github.event.release.tag_name }}"
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true  # a version uploaded by hand first is fine

@@ -1,0 +1,42 @@
+name: Bug report
+description: tracon shows the wrong state, misses an agent, or crashes
+body:
+  - type: markdown
+    attributes:
+      value: |
+        tracon reads Claude Code's own transcript files, which change between Claude Code versions,
+        so the version numbers below matter more than usual.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      placeholder: "Agent shown as IDLE while it was running tests"
+    validations:
+      required: true
+  - type: input
+    id: tracon
+    attributes:
+      label: tracon version
+      description: "`tracon --version`"
+    validations:
+      required: true
+  - type: input
+    id: claude
+    attributes:
+      label: Claude Code version
+      description: "`claude --version`"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and terminal
+      placeholder: "macOS 26, Ghostty"
+  - type: textarea
+    id: snapshot
+    attributes:
+      label: Snapshot (optional)
+      description: |
+        Output of `tracon --once --no-judge`, or `--at "HH:MM"` for the moment it went wrong.
+        It includes your agents' task descriptions and file paths; redact anything private.
+      render: text
