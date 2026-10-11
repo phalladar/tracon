@@ -284,7 +284,7 @@ messages from your own user on macOS and Linux.
 | `--at TIME` | live | replay as of a local time (`07:20` or `2026-10-11 07:20`) |
 | `--idle MIN` | 5 | silence before IDLE |
 | `--stall MIN` | 20 | running without change before STALLED |
-| `--no-notify` | | no macOS notifications |
+| `--notify` | off | macOS notifications when an agent needs you |
 | `--no-judge` | | turn the LLM check off |
 | `--judge-model` | `claude-haiku-5-5` | model for the check |
 | `--judge-backend` | `auto` | `api` or `cli` |

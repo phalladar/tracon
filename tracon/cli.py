@@ -36,7 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--at", help="replay as of this local time, e.g. '2026-10-11 01:30' or '01:30'")
     p.add_argument("--list", action="store_true", help="list recent sessions that have subagents")
     p.add_argument("--once", action="store_true", help="print one snapshot and exit (no TUI)")
-    p.add_argument("--no-notify", action="store_true", help="no macOS notifications when an agent needs you")
+    # Off by default: the owner reads card changes in Foreman, and these arrive as Script Editor.
+    p.add_argument("--notify", action="store_true", help="macOS notifications when an agent needs you (off by default)")
+    p.add_argument("--no-notify", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--idle", type=float, default=5, help="minutes of silence before IDLE (default 5)")
     p.add_argument("--stall", type=float, default=20, help="minutes running without change before STALLED (default 20)")
     p.add_argument("--no-judge", action="store_true", help="turn off the LLM on-track check")
@@ -96,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     from .app import LaneApp
 
-    app = LaneApp(refs, at=at, thresholds=th, notify=not args.no_notify and demo is None, judge=judge, web_port=args.port,
+    app = LaneApp(refs, at=at, thresholds=th, notify=args.notify and not args.no_notify and demo is None, judge=judge, web_port=args.port,
                   title_prefix=None if args.no_title else args.title_prefix, prober=demo.prober if demo else None)
     try:
         app.run()
