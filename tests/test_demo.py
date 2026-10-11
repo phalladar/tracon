@@ -16,7 +16,7 @@ def test_demo_shows_every_kind_of_trouble(tmp_path):
     demo = Demo(root=str(tmp_path))
     by = snapshot(demo)
     assert {k: st.state for k, st in by.items()} == {
-        "#11": "REPORTED", "#12": "WORKING", "#13": "WORKING", "#14": "RUNNING",
+        "#11": "DONE", "#12": "WORKING", "#13": "WORKING", "#14": "RUNNING",
         "#15": "BLOCKED", "#16": "WORKING", "#17": "IDLE",
     }
     codes = {k: {f.code for f in st.flags} for k, st in by.items()}

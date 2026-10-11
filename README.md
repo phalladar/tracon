@@ -168,17 +168,17 @@ Once an agent has finished, its flags turn grey: they are history, not action. O
 
 | State | Means | What to do |
 |---|---|---|
-| ⛔ **BLOCKED** | An instant call (Edit, Read, `git status`) has been open for 45 s, or a shell call with nothing running: it is waiting on a permission prompt | Answer the prompt if it is showing in your session. If nobody can see it, allow that tool in your permission settings, or have the lead stop and re-dispatch the agent |
-| ⏸ **IDLE** | No transcript activity for 5 min and nothing running | Check the last lines of its feed: it often hit an error or is waiting for input it will never get. Have the lead message it or stop it |
-| 🐌 **STALLED** | A process has run for 20 min with no file change or commit | Usually a hung test or a watcher that never exits. Check the process in the detail; kill it, or have the lead stop the agent |
-| 👻 **ORPHANED** | Silent, but a detached process it started is still running after its parent died | Kill the process (pid in the detail) |
-| ⏳ **WAITING** | Its turn has ended (or it is quiet) while background work it launched still runs | Usually nothing: it resumes when that work finishes. If the work is stuck, see STALLED |
-| … **PENDING** | Replay only: a tool call was open, and without process data tracon can't tell a long run from a prompt | Nothing; go live to see which it is |
-| ▶ **RUNNING** | A tool call is in progress (a build, a test run) | Nothing |
-| ● **WORKING** | Making calls normally | Nothing |
-| ○ **STARTING** | Dispatched, no activity yet | Nothing |
-| ✓ **REPORTED** | Finished: handed back a report, the lead was told it completed, or it ended with a final answer and nothing running | Read its report; merge |
-| ■ **STOPPED** | Stopped by the lead, failed, or killed | Check why if you didn't expect it |
+| **BLOCKED** | An instant call (Edit, Read, `git status`) has been open for 45 s, or a shell call with nothing running: it is waiting on a permission prompt | Answer the prompt if it is showing in your session. If nobody can see it, allow that tool in your permission settings, or have the lead stop and re-dispatch the agent |
+| **IDLE** | No transcript activity for 5 min and nothing running | Check the last lines of its feed: it often hit an error or is waiting for input it will never get. Have the lead message it or stop it |
+| **STALLED** | A process has run for 20 min with no file change or commit | Usually a hung test or a watcher that never exits. Check the process in the detail; kill it, or have the lead stop the agent |
+| **ORPHANED** | Silent, but a detached process it started is still running after its parent died | Kill the process (pid in the detail) |
+| **WAITING** | Its turn has ended (or it is quiet) while background work it launched still runs | Usually nothing: it resumes when that work finishes. If the work is stuck, see STALLED |
+| **PENDING** | Replay only: a tool call was open, and without process data tracon can't tell a long run from a prompt | Nothing; go live to see which it is |
+| **RUNNING** | A tool call is in progress (a build, a test run) | Nothing |
+| **WORKING** | Making calls normally | Nothing |
+| **STARTING** | Dispatched, no activity yet | Nothing |
+| **DONE** | Finished: handed back a report, the lead was told it completed, or it ended with a final answer and nothing running | Read its report; merge |
+| **STOPPED** | Stopped by the lead, failed, or killed | Check why if you didn't expect it |
 
 A pinned **◆ lead** row shows the orchestrating session itself (running, working, or waiting
 on its agents or on you), so its activity is never mistaken for a subagent's.

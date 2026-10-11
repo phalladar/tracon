@@ -421,7 +421,7 @@ function renderTimeline() {
       } else {
         n = svgEl("text", { x: mx, y: cy - 8, "text-anchor": "middle", class: "strong" }, "◆");
       }
-      n.dataset.tip = JSON.stringify({ v: { report: "✓ Reported", error: "✗ Tool error", lead: "◆ Lead message" }[m.k], s: hms(m.t), l: [m.label] });
+      n.dataset.tip = JSON.stringify({ v: { report: "✓ Done", error: "✗ Tool error", lead: "◆ Lead message" }[m.k], s: hms(m.t), l: [m.label] });
       row.append(n);
     }
     svg.append(row);
@@ -448,7 +448,7 @@ function renderLegend() {
     s.append(sw, document.createTextNode(name));
     lg.append(s);
   }
-  const extra = [["--serious", "Silent past the idle threshold", "line"], ["--good", "Reported", "dot"], ["--critical", "Tool error", "tick"]];
+  const extra = [["--serious", "Silent past the idle threshold", "line"], ["--good", "Done", "dot"], ["--critical", "Tool error", "tick"]];
   for (const [v, name, shape] of extra) {
     const s = el("span"), sw = el("span", { class: "sw" });
     sw.style.background = `var(${v})`;

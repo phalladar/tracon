@@ -138,14 +138,14 @@ def test_silent_waiting_on_background_work(b):
     assert b.assess(12, probe(["godot"]), live=True).state == "WAITING"
 
 
-def test_handback_is_reported(b):
+def test_handback_is_done(b):
     b.bash(1, "git merge master")
     b.call(2, "SubagentHandback", {"message": "#1 is done"}, "ok")
     st = b.assess(30)
-    assert st.state == "REPORTED" and st.finished
+    assert st.state == "DONE" and st.finished
 
 
-def test_work_after_handback_is_not_reported(b):
+def test_work_after_handback_is_not_done(b):
     b.call(2, "SubagentHandback", {"message": "#1 is done"}, "ok")
     b.user(3, "The coordinator sent a message while you were working: fix the gate")
     b.bash(4, "git merge master")
@@ -162,7 +162,7 @@ def test_replay_hides_future(b):
     b.bash(1, "git merge master")
     b.call(20, "SubagentHandback", {"message": "done"}, "ok")
     assert b.assess(2).state == "WORKING"
-    assert b.assess(21).state == "REPORTED"
+    assert b.assess(21).state == "DONE"
 
 
 # -- flags ------------------------------------------------------------------
@@ -288,11 +288,11 @@ def task_note(b, m, status, aid="a1"):
     b.lead.append({"type": "user", "timestamp": ts(m), "message": {"content": body}})
 
 
-def test_final_answer_counts_as_reported(b):
+def test_final_answer_counts_as_done(b):
     b.bash(1, "grep -rn foo .")
     final_text(b, 2, "Here is what I found.")
     st = b.assess(20)
-    assert st.state == "REPORTED" and "what I found" in st.detail
+    assert st.state == "DONE" and "what I found" in st.detail
 
 
 def test_text_mid_turn_is_not_final(b):
@@ -318,7 +318,7 @@ def test_lead_task_note_completed_is_authoritative(b):
     final_text(b, 2, "All done.")
     task_note(b, 3, "completed")
     st = b.assess(20)
-    assert st.state == "REPORTED" and st.detail == "All done."
+    assert st.state == "DONE" and st.detail == "All done."
 
 
 def test_lead_task_note_failed_is_stopped(b):

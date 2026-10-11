@@ -184,7 +184,7 @@ def test_web_snapshot_shapes(lane):
     state = LaneState(SessionRef(str(lane.tmp), lane.sid, 0, 1), Thresholds(), None, None)
     snap = state.snapshot(at(10))
     a = snap["agents"][0]
-    assert a["label"] == "#1" and a["state"] == "REPORTED"
+    assert a["label"] == "#1" and a["state"] == "DONE"
     kinds = [sg["k"] for sg in a["segments"]]
     assert kinds == ["shell", "edit"]  # the two shell calls merge into one segment
     assert a["segments"][0]["n"] == 2

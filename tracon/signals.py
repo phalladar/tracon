@@ -56,7 +56,7 @@ STATES = {
     "RUNNING": ("ok", "▶"),
     "WORKING": ("ok", "●"),
     "STARTING": ("ok", "○"),
-    "REPORTED": ("done", "✓"),
+    "DONE": ("done", "✓"),
     "STOPPED": ("done", "■"),
 }
 
@@ -162,13 +162,13 @@ def _state(agent, session, events, at, now, probe, th) -> tuple[str, str]:
             if parked:
                 # It stopped while work it launched was still going: parked mid-task, not done.
                 return "WAITING", f"stopped mid-task while its background work runs (lead told 'completed'): {final_text}"
-            return "REPORTED", final_text or note.extra.get("summary", "") or "completed"
+            return "DONE", final_text or note.extra.get("summary", "") or "completed"
         return "STOPPED", f"{status}: {final_text or note.extra.get('summary', '')}"
 
     if handback is not None and not any(
         e.kind == "tool_use" and e.ts > handback.ts and e.tool not in HANDBACK_TOOLS for e in events
     ):
-        return "REPORTED", handback.summary
+        return "DONE", handback.summary
 
     live = probe.live if probe else None
     orphans = [p for p in probe.procs if p.orphan] if probe else []
@@ -182,7 +182,7 @@ def _state(agent, session, events, at, now, probe, th) -> tuple[str, str]:
             # No process data (replay, or no worktree) and it launched background work: it may
             # be parked until that work notifies it. The lead's task note settles it either way.
             return "WAITING", "ended its turn; may be waiting on background work it launched"
-        return "REPORTED", last.summary
+        return "DONE", last.summary
 
     pending = _pending(events)
     if pending:

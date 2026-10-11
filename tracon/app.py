@@ -401,7 +401,7 @@ class TimelineScreen(Screen):
             t.append_text(self._row(agent, start, bucket, width, at, app.th))
             t.append("\n")
         t.append(
-            "\n█ edit  ▓ shell  ▒ read/search  ░ other  · silent past the idle threshold  ✓ reported  ■ stopped\n",
+            "\n█ edit  ▓ shell  ▒ read/search  ░ other  · silent past the idle threshold  ✓ done  ■ stopped\n",
             style="grey58",
         )
         return t
@@ -584,8 +584,8 @@ class LaneApp(App):
             old_state, old_bad = previous.get(aid, ("", frozenset()))
             if state != old_state and state in NOTIFY_STATES:
                 notify(f"{st.agent.description} — {state}", st.detail)
-            elif state == "REPORTED" and old_state not in ("REPORTED", ""):
-                notify(f"{st.agent.description} reported", st.detail)
+            elif state == "DONE" and old_state not in ("DONE", ""):
+                notify(f"{st.agent.description} done", st.detail)
             elif bad - old_bad:
                 f = next(f for f in st.flags if f.code in bad - old_bad)
                 notify(f"{st.agent.description} — {f.code}", f.detail)
