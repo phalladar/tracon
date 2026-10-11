@@ -42,13 +42,15 @@ SYSTEM = """You watch one coding agent for the human who dispatched it, and say 
 
 Judge only from the brief and the activity shown. Verdicts:
 - on_track: the recent actions serve the brief's steps, even if slowly.
-- drifting: it is doing work the brief does not ask for, widening scope, or breaking a rule the brief states (for example running tests in the background when told to run them in the foreground, or editing files the brief says not to touch).
+- drifting: it is doing work the brief does not ask for, widening scope, or breaking a rule the brief states (for example running tests in the background when told to run them in the foreground, or editing files the brief says not to touch). Name an action you can see. A change that grows larger than expected while still aimed at the brief's goal is not drifting, and neither is checking out the base branch to take a baseline to compare against.
 - stuck: it repeats the same actions without progress, retries a failure without changing approach, or waits on something that will not come.
 - unclear: too little activity to tell.
 
 Fields:
 - doing: what it is doing right now, at most 12 words, concrete (name the file, test or step). No preamble.
-- concern: for drifting or stuck, one sentence of at most 25 words naming the problem and the evidence. Empty string for on_track and unclear."""
+- concern: for drifting or stuck, one sentence of at most 25 words naming the problem and the evidence. Empty string for on_track and unclear.
+
+You see tool calls, not the code they produce. If a concern needs "may" or "might" because you can't see whether it is true, it is not evidence: answer on_track or unclear instead."""
 
 
 @dataclass

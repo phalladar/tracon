@@ -212,7 +212,7 @@ judge's concern, and how the verdict has changed over time.
 | Verdict | Means | What to do |
 |---|---|---|
 | ✓ **on track** | Its recent actions serve the brief's steps, even if slowly | Nothing |
-| ↯ **drifting** (amber, adds **DRIFT**) | It is doing work the brief doesn't ask for, widening scope, or breaking a rule the brief states (running tests in the background when told to run them in the foreground, editing files it was told not to touch) | Read the concern in the detail. If it is real, have the lead message the agent to get back to the brief, or stop it. If the extra work is fine (your brief was narrower than you meant), ignore it |
+| ↯ **drifting** (amber, adds **DRIFT**) | It is doing work the brief doesn't ask for, widening scope, or breaking a rule the brief states (running tests in the background when told to run them in the foreground, editing files it was told not to touch). The concern names an action it can see; growth that still serves the brief, or a baseline taken on the base branch, doesn't count | Read the concern in the detail. If it is real, have the lead message the agent to get back to the brief, or stop it. If the extra work is fine (your brief was narrower than you meant), ignore it |
 | ⟳ **stuck** (red, adds **STUCK**) | It repeats actions without progress, retries a failure without changing approach, or waits on something that won't come | Find the repeated failure in the feed. Give it the missing piece through the lead, or stop it and re-dispatch with a better brief |
 | ? **unclear** | Too little activity to tell | Nothing; wait |
 | … **judging** | A check is in progress | Nothing |
