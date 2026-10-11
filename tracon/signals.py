@@ -30,6 +30,17 @@ QUICK_BASH_RE = re.compile(
 
 
 DENIAL_REASON_RE = re.compile(r"Reason: \[([^\]]+)\]")
+_SENTENCE_RE = re.compile(r"(?<=[.!?\n])\s+")
+_BG_RE = re.compile(r"\bnohup\b|\bbackground\b|run_in_background", re.I)
+_NEG_RE = re.compile(r"\b(never|not|no|don't|avoid|without)\b", re.I)
+
+
+def brief_wants_foreground(brief: str) -> bool:
+    """The brief asks for foreground runs and nowhere allows a background one. "It exceeds the
+    foreground limit, so you may run it with nohup in the background" mentions the foreground but allows nohup."""
+    if "foreground" not in brief.lower():
+        return False
+    return not any(_BG_RE.search(s) and not _NEG_RE.search(s) for s in _SENTENCE_RE.split(brief))
 
 
 @dataclass
@@ -360,7 +371,7 @@ def _flags(st, agent, session, events, at, probe, th) -> list[Flag]:
 
     bg = [e for e in tool_uses if e.background]
     if bg:
-        against = "foreground" in agent.transcript.brief.lower()
+        against = brief_wants_foreground(agent.transcript.brief)
         flags.append(Flag(
             "BG",
             "warn" if against else "info",

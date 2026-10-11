@@ -5,7 +5,7 @@ import pytest
 
 from tracon.probe import Proc, WorktreeProbe
 from tracon.session import Session, SessionRef
-from tracon.signals import Thresholds, assess, brief_paths, on_brief
+from tracon.signals import Thresholds, assess, brief_paths, brief_wants_foreground, on_brief
 from tracon.transcript import Transcript
 
 T0 = datetime(2026, 10, 11, 12, 0, tzinfo=timezone.utc)
@@ -300,6 +300,18 @@ def test_detached_launch_counts_as_background(b):
     b.bash(2, "make build && echo ok")
     f = next(f for f in b.assess(3).flags if f.code == "BG")
     assert "1 background" in f.detail and f.severity == "info"
+
+
+def test_brief_wants_foreground():
+    assert brief_wants_foreground("Fix the loader. Run tests in the foreground.")
+    assert brief_wants_foreground("Run tests in the foreground, never in the background.")
+    assert brief_wants_foreground("Don't use run_in_background.\nRun the walk in the foreground.")
+    assert not brief_wants_foreground("Fix the loader.")
+    # #770: mentions the foreground limit, but allows nohup
+    assert not brief_wants_foreground(
+        "- It exceeds the 600 s foreground limit, so you may run it with `nohup` in the background.\n"
+        "- Wait on it with one foreground `until` loop per call, at most 590 s each."
+    )
 
 
 # -- agents that finish without a hand-back tool ------------------------------

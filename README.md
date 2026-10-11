@@ -212,7 +212,7 @@ on its agents or on you), so its activity is never mistaken for a subagent's.
 | **STALE-BASE** | It started editing before merging the base branch, after the lead had already merged something. Live, git has the last word: no flag once its HEAD contains the base, and the flag says how many commits behind it is | Expect conflicts; have it merge the base before it goes further |
 | **COLLIDE** | Another agent edited the same file while both were running. Press `x` for the heatmap | The second merge may conflict. Decide which agent owns the file, or plan the merge order |
 | **OFF-BRIEF** | It edited files the brief never names (grey: often legitimate) | Glance at the list; worth a question only if the files look unrelated |
-| **BG** | It launched background or detached runs. Amber when its brief says to run in the foreground | If amber, it is ignoring the brief; have the lead remind it |
+| **BG** | It launched background or detached runs. Amber when its brief says to run in the foreground and nowhere allows a background or `nohup` run | If amber, it is ignoring the brief; have the lead remind it |
 | **UNCOMMITTED** | Edits left uncommitted for 45 min | Work at risk if the worktree is cleaned up; have it commit |
 | **CTX** | Context above 300k (amber) or 450k (red) tokens | It will slow down and forget earlier instructions. Have it wrap up and hand back, or re-dispatch the rest fresh |
 | **ORPHAN** | A detached process is still running from its worktree | Kill it once you're sure nothing needs it |
