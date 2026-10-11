@@ -40,7 +40,7 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
   that keeps busy agents busy. `scripts/screenshots.py` drives it for the README images;
   `scripts/hero.py` runs it on a virtual clock next to a scripted Claude Code pane (sending is
   stubbed there) for the hero GIF. Re-run both after UI changes.
-- `advice.py`: drafts the nudge `m` sends the lead (state, flags, judge concern, advice
+- `advice.py`: drafts the nudge `n` sends the lead (state, flags, judge concern, advice
   mirroring README's "What to do"). Pure.
 - `inbox.py`: finds the lead's live process in `~/.claude/sessions/<pid>.json` and writes one
   JSON line to its `messagingSocketPath`. **The only module that knows the inbox format.**
@@ -52,7 +52,7 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
 ## Rules
 
 - Never write to `~/.claude/` or to a watched repo. The only writes are the judge cache and a
-  nudge to the lead's inbox socket, sent only when the user presses `m` (one keypress, no
+  nudge to the lead's inbox socket, sent only when the user presses `n` (one keypress, no
   preview; a toast confirms it). Never send automatically, never send to a subagent, and never read
   the `~/.claude/sessions/*.key` files (auth is optional on macOS/Linux).
 - Keep `signals.py` pure; anything that needs several agents goes in `lane.py`.

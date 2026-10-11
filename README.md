@@ -30,7 +30,7 @@ is doing, whether it is holding, whether it has drifted off its brief, and wheth
 are on a collision course in the same file. Run it in a split next to your session.
 
 - **Read-only and local.** It reads the transcripts Claude Code already writes to disk and
-  never writes to your repository. It sends something to a session only when you press `m`
+  never writes to your repository. It sends something to a session only when you press `n`
   and confirm.
 - **No setup.** No hooks, no config, no account. Point it at a project, or let it find the
   newest session.
@@ -67,7 +67,7 @@ time.
 
 ### Nudge the lead in one key
 
-`m` nudges your orchestrating session about the selected agent: tracon drafts a note with
+`n` nudges your orchestrating session about the selected agent: tracon drafts a note with
 the agent's state, flags, the judge's concern and what to do, and sends it straight away (see
 [Nudging the lead](#nudging-the-lead)).
 
@@ -125,7 +125,7 @@ A good layout: your orchestrating session on one side, `tracon` in a split next 
 | `x` | files heatmap: which agents edited which files, concurrent edits marked `!` |
 | `w` | open the browser view |
 | `j` | ask the judge about the selected agent now |
-| `m` | nudge the lead about the selected agent: sends a note with its state, flags and what to do (live only) |
+| `n` | nudge the lead about the selected agent: sends a note with its state, flags and what to do (live only) |
 | `[` `]` / `{` `}` | rewind / forward 5 / 30 min (enters replay) · `space` play · `l` back to live |
 | `o` / `c` | open the agent's worktree in a new Ghostty window / copy its path |
 | `h` / `s` / `q` | hide finished agents / next session / quit |
@@ -244,7 +244,7 @@ Judgments are cached in `~/.cache/tracon/judgments.json`, so replays and restart
 
 ## Nudging the lead
 
-Most of the "What to do" advice above is "have the lead…". Press `m` on an agent (in the table
+Most of the "What to do" advice above is "have the lead…". Press `n` on an agent (in the table
 or its detail) and tracon nudges the lead with that note: the agent's id, state, flags, the
 judge's concern, and the matching advice, phrased for the lead's own tools (`SendMessage`,
 `TaskStop`). It is sent as soon as you press the key; a notification confirms it.
@@ -254,7 +254,7 @@ It is delivered through Claude Code's cross-session inbox: tracon finds the lead
 as a message from another session, between tool calls or as a new turn if it is idle, and it
 can't approve permission prompts. If the lead's `crossSessionInbound` setting is `hold` (or
 its permission mode makes Claude Code review peer messages), the message waits for you to
-approve it in that session. If the lead isn't running, `m` copies the note to the
+approve it in that session. If the lead isn't running, `n` copies the note to the
 clipboard instead. tracon never reads the inbox auth keys; the socket accepts unauthenticated
 messages from your own user on macOS and Linux.
 
@@ -302,7 +302,7 @@ tracon/
   signals.py     one agent -> state + flags (pure, testable)
   lane.py        whole-run view: file collisions, judge results, assess_all()
   judge.py       the optional LLM check, its scheduling, budget and cache
-  advice.py      the nudge `m` sends the lead
+  advice.py      the nudge `n` sends the lead
   demo.py        the made-up run behind `--demo`
   inbox.py       find a live session's inbox socket and send to it
   app.py         Textual TUI
@@ -314,7 +314,7 @@ tracon/
 
 - Transcript files are Claude Code internals, not a public API. A format change may break
   parsing; the fix belongs in `transcript.py`. The same goes for the session registry and
-  inbox socket used by `m`, in `inbox.py`.
+  inbox socket used by `n`, in `inbox.py`.
 - Built and tested on macOS. Notifications (`osascript`), copy (`pbcopy`) and "open in
   Ghostty" are macOS-only; the rest should work on Linux with `lsof` installed.
 - In replay there is no process data, so a long-running shell call shows as **PENDING**

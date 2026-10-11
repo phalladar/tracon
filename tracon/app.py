@@ -167,7 +167,7 @@ class DetailScreen(Screen):
         Binding("b", "toggle_brief", "Brief"),
         Binding("o", "app.open_worktree", "Open in Ghostty"),
         Binding("c", "app.copy_path", "Copy path"),
-        Binding("m", "app.nudge_lead", "Nudge lead"),
+        Binding("n", "app.nudge_lead", "Nudge lead"),
     ]
 
     def __init__(self, agent_id: str) -> None:
@@ -462,7 +462,7 @@ class LaneApp(App):
         Binding("x", "files", "Files"),
         Binding("w", "web", "Web"),
         Binding("j", "judge_now", "Judge"),
-        Binding("m", "nudge_lead", "Nudge lead"),
+        Binding("n", "nudge_lead", "Nudge lead"),
         Binding("h", "toggle_done", "Hide done"),
         Binding("o", "open_worktree", "Ghostty"),
         Binding("c", "copy_path", "Copy path"),

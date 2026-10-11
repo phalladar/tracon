@@ -6,7 +6,7 @@ terminal split, the way tracon is meant to be used.
 The right pane is the real tracon TUI watching the `--demo` run on a virtual clock: transcripts
 are written up to the clock, so agents appear as the lead dispatches them and trouble builds up
 as time runs. The left pane is a scripted Claude Code session drawn from the same lead
-transcript. At the end you press `m` on the stuck agent and send the note; the left pane shows
+transcript. At the end you press `n` on the stuck agent and send the note; the left pane shows
 it arriving and the lead's reply, and the agent gets going again. Sending is stubbed: nothing
 leaves this process. Frames are Rich SVGs rendered with headless Chrome and stitched with Pillow.
 """
@@ -309,14 +309,14 @@ async def record(tmp: str) -> list[tuple[str, int]]:
         lead.busy = None
         await shot(1400)
 
-        # 3. You pick the stuck agent in tracon and press m to nudge the lead.
+        # 3. You pick the stuck agent in tracon and press n to nudge the lead.
         title = "◎ checkout-v2 sprint"
         target = app._order.index(a16)
         while table.cursor_row < target:
             await pilot.press("down")
             await shot(260, title)
         await shot(900, title)
-        await pilot.press("m")
+        await pilot.press("n")
         await pilot.pause(0.4)
         await shot(2400, title)  # the "nudged the lead" toast
 
