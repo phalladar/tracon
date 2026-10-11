@@ -33,8 +33,10 @@ def test_owner_walks_up_to_claude_a_terminal_or_init():
 
 def test_the_live_probe_sees_a_child_process_and_its_cwd(tmp_path):
     """Exercises the real lsof (macOS) or /proc (Linux) and ps calls."""
-    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], cwd=tmp_path)
+    child = subprocess.Popen([sys.executable, "-c", "print('up', flush=True); import time; time.sleep(30)"],
+                             cwd=tmp_path, stdout=subprocess.PIPE, text=True)
     try:
+        child.stdout.readline()  # past exec, so ps sees its full command line
         cwds = Prober._process_cwds()
         table = Prober._process_table()
         assert os.path.realpath(cwds[child.pid]) == os.path.realpath(tmp_path)
