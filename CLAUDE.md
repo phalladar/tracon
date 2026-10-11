@@ -50,7 +50,7 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
   now), with a canned `DemoProber` and `DemoJudge` (never calls a model) and a ticker thread
   that keeps busy agents busy. `scripts/screenshots.py` drives it for the README images;
   `scripts/hero.py` runs it on a virtual clock next to a scripted Claude Code pane (sending is
-  stubbed there) for the hero GIF. Re-run both after UI changes.
+  stubbed there) for the hero GIF. Re-run both only after major UI changes, not small tweaks.
 - `advice.py`: drafts the nudge `n` sends the lead (state, flags, judge concern, advice
   mirroring README's "What to do"). Pure.
 - `inbox.py`: reads the live-session registry `~/.claude/sessions/<pid>.json` (`live_sessions`),
