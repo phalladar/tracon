@@ -12,7 +12,7 @@ from tracon.advice import compose
 from tracon.inbox import find_inbox, send
 from tracon.lane import assess_all
 
-from test_lane import T0, lane, ts  # noqa: F401  (fixture)
+from test_lane import T0, lane, refusal, ts  # noqa: F401  (fixture)
 
 
 @pytest.fixture
@@ -100,3 +100,31 @@ def test_compose_states_judge_concern_once(lane, tmp_path):  # noqa: F811
     text = compose(statuses["a1"])
     assert "- DRIFT: " + concern in text
     assert text.count(concern) == 1
+
+
+def test_compose_skips_advice_for_info_flags(lane):  # noqa: F811
+    lane.agent("a1", "#12 fix the parser", 0, brief="Fix the parser. It's slow, so you may run it with nohup in the background.")
+    lane.call("a1", 1, "Bash", {"command": "nohup pytest > .scratch/t.log 2>&1 &"})
+    s = lane.session()
+    statuses, _ = assess_all(s, T0 + timedelta(minutes=1.5))
+    text = compose(statuses["a1"])
+    assert "- BG:" in text and "its brief says" not in text
+    assert "If its brief says foreground" not in text
+
+
+def test_compose_quotes_the_last_refusal_for_a_drift(lane, tmp_path):  # noqa: F811
+    from tracon.judge import Judge, Judgment
+
+    wt = lane.agent("a1", "#768 night plan", 0)
+    for m in (1, 2, 3):
+        lane.call("a1", m, "Bash", {"command": "for s in a b; do tools/godot-test --strategy=$s; done"}, ok=False, out=refusal(wt))
+        lane.call("a1", m + 0.1, "Bash", {"command": "tools/godot-test --strategy=a"})
+    s = lane.session()
+    j = Judge(backend="cli", cache_dir=str(tmp_path / "cache"))
+    j.history["a1"] = [Judgment("drifting", "running walks", "Reworded refused commands several times.", ts(3.1), 6, made=0.0)]
+    statuses, _ = assess_all(s, T0 + timedelta(minutes=3.5), judge=j)
+    text = compose(statuses["a1"])
+    assert "- DENIED" not in text  # info, and DRIFT is loud, so only DRIFT is listed
+    quote = next(line for line in text.splitlines() if line.startswith("Its last refusal"))
+    assert ", 3 in all): This agent is isolated in the worktree <worktree>," in quote
+    assert quote.endswith("run them from <worktree>.")

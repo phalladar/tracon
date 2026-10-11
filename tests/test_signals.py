@@ -264,6 +264,36 @@ def test_denial_reason_is_reported(b):
     assert "Modify Shared Resources" in f.detail and f.severity == "warn"
 
 
+GUARD = (f"This agent is isolated in the worktree {WT}, but this command is too complex to verify that it stays inside "
+         f"the worktree. Refusing to run it — a worktree-isolated agent's git operations must target its own worktree. "
+         f"Split it into plain, separate commands and run them from {WT}.")
+
+
+def test_guard_refusals_the_agent_works_around_stay_quiet(b):
+    for m in (1, 2, 3):  # #768: each refusal followed by the split commands it asked for
+        b.call(m, "Bash", {"command": "for s in a b; do tools/godot-test --strategy=$s; done"}, GUARD, error=True)
+        b.bash(m + 0.1, "tools/godot-test --strategy=a")
+    s = b.session()
+    refused = [e for e in s.agents["a1"].transcript.events if e.refused]
+    assert len(refused) == 3 and not any(e.rejected for e in refused)
+    assert refused[0].text.endswith(f"run them from {WT}.")  # the whole message, not the feed line
+    f = next(f for f in b.assess(4).flags if f.code == "DENIED")
+    assert f.severity == "info" and f.detail == "3 refused by a guard"
+
+
+def test_guard_refusals_back_to_back_are_loud(b):
+    b.call(1, "Bash", {"command": "cd x && git status"}, GUARD, error=True)
+    b.call(2, "Bash", {"command": "(cd x; git status)"}, GUARD, error=True)
+    f = next(f for f in b.assess(3).flags if f.code == "DENIED")
+    assert f.severity == "warn"
+    assert next(f for f in b.assess(40).flags if f.code == "DENIED").severity == "info"
+
+
+def test_sleep_block_is_a_guard_refusal(b):
+    b.call(1, "Bash", {"command": "sleep 240; cat log"}, "<tool_use_error>Blocked: sleep 240 followed by: cat log. To wait for a condition, use Monitor.</tool_use_error>", error=True)
+    assert next(f for f in b.assess(2).flags if f.code == "DENIED").detail == "1 refused by a guard"
+
+
 def test_finished_agent_flags_are_downgraded(b):
     b.edit(1, WT + "/simulation/other.gd")
     b.call(2, "SubagentHandback", {"message": "done"}, "ok")

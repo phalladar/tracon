@@ -46,6 +46,8 @@ Judge only from the brief and the activity shown. Verdicts:
 - stuck: it repeats the same actions without progress, retries a failure without changing approach, or waits on something that will not come.
 - unclear: too little activity to tell.
 
+Doing what a refusal or error message tells it to do (splitting a command, using another tool) is not rewording around it. A report the brief asks for at handback is not missing until the agent hands back.
+
 Fields:
 - doing: what it is doing right now, at most 12 words, concrete (name the file, test or step). No preamble.
 - concern: for drifting or stuck, one sentence of at most 25 words naming the problem and the evidence. Empty string for on_track and unclear.
@@ -244,7 +246,9 @@ def build_prompt(agent: Agent, session: Session, state_line: str = "", at: datet
             tag = "REPORT" if e.tool in HANDBACK_TOOLS else e.tool
             lines.append(f"{_hm(e.ts)} {tag}: {e.summary}" + ("  [background]" if e.background else ""))
         elif e.kind == "tool_result" and e.is_error:
-            lines.append(f"{_hm(e.ts)}   failed: {e.summary[:160]}")
+            # The whole message: a refusal says why and what to do instead, which a cut-off line loses.
+            what = "denied" if e.rejected else "refused" if e.refused else "failed"
+            lines.append(f"{_hm(e.ts)}   {what}: {_clip(agent.shorten(e.text or e.summary), 600)}")
         elif e.kind == "text":
             lines.append(f"{_hm(e.ts)}   (agent says) {e.summary}")
         elif e.kind == "coordinator":
@@ -271,6 +275,10 @@ def build_prompt(agent: Agent, session: Session, state_line: str = "", at: datet
     )
     as_of = (events[-1].ts if events else datetime.now()).isoformat()
     return prompt, len(tool_uses), as_of
+
+
+def _clip(s: str, n: int) -> str:
+    return s if len(s) <= n else s[: n - 1] + "…"
 
 
 def _hm(ts: datetime) -> str:

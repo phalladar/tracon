@@ -83,6 +83,11 @@ class Agent:
     def workdir(self) -> str:
         return self.worktree or self.transcript.cwd
 
+    def shorten(self, text: str) -> str:
+        """`text` with this agent's own worktree path written as `<worktree>`."""
+        wd = self.workdir.rstrip("/")
+        return text.replace(wd, "<worktree>") if wd else text
+
     def started(self) -> datetime | None:
         ev = self.transcript.events
         return ev[0].ts if ev else None

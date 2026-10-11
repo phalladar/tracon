@@ -378,12 +378,24 @@ def _flags(st, agent, session, events, at, probe, th) -> list[Flag]:
             f"{len(bg)} background/detached launch(es)" + (" — its brief says run in the foreground" if against else ""),
         ))
 
-    denied = [e for e in events if e.kind == "tool_result" and e.rejected]
-    if denied:
-        reasons = sorted({m for e in denied for m in DENIAL_REASON_RE.findall(e.summary)})
-        why = f" ({', '.join(reasons)})" if reasons else ""
-        recent = (at - denied[-1].ts).total_seconds() < 30 * 60
-        flags.append(Flag("DENIED", "warn" if recent else "info", f"{len(denied)} tool call(s) denied{why}"))
+    results = [e for e in events if e.kind == "tool_result"]
+    denied = [e for e in results if e.rejected]
+    refused = [e for e in results if e.refused]
+    if denied or refused:
+        parts, loud = [], False
+        if denied:
+            reasons = sorted({m for e in denied for m in DENIAL_REASON_RE.findall(e.summary)})
+            why = f" ({', '.join(reasons)})" if reasons else ""
+            parts.append(f"{len(denied)} tool call(s) denied{why}")
+            loud = (at - denied[-1].ts).total_seconds() < 30 * 60
+        if refused:
+            # A guard says what to do instead; an agent that does it moves on. Two refusals with
+            # nothing getting through between them means it is pushing against the guard.
+            parts.append(f"{len(refused)} refused by a guard")
+            i = max(n for n, e in enumerate(results) if e.refused)
+            pushing = i > 0 and results[i - 1].refused
+            loud = loud or (pushing and (at - refused[-1].ts).total_seconds() < 30 * 60)
+        flags.append(Flag("DENIED", "warn" if loud else "info", "; ".join(parts)))
 
     if probe and any(p.orphan for p in probe.procs):
         o = next(p for p in probe.procs if p.orphan)

@@ -206,7 +206,7 @@ on its agents or on you), so its activity is never mistaken for a subagent's.
 |---|---|---|
 | **LOOP** | The same call 3× in a row with no edit in between | It is spinning. Have the lead tell it what it is missing, or stop it |
 | **ERRORS** | Its last 3 tool calls failed | Look at the errors in the feed; it may recover on its own |
-| **DENIED** | Tool calls were denied, with the classifier's reasons (e.g. "Modify Shared Resources"). Amber for 30 min, then grey | Decide whether it should have that permission; if so, allow it and have the lead tell it to retry |
+| **DENIED** | Tool calls were denied, with the classifier's reasons (e.g. "Modify Shared Resources"), or refused by a guard (Claude Code's worktree isolation or its sleep block, which say what to do instead). A denial is amber for 30 min, then grey. A guard refusal stays grey while the agent's next call gets through, and turns amber only when it is refused twice in a row | For a denial, decide whether it should have that permission; if so, allow it and have the lead tell it to retry. For an amber refusal, have the lead tell it to do what the refusal says, or to report what it can't do |
 | **OUTSIDE** | A worktree agent edited the main checkout instead of its worktree | Check `git status` in your main checkout and undo or move those edits |
 | **BRANCH** | Its worktree is on a different branch from the one it was given | Check it hasn't committed to the wrong branch before you merge |
 | **STALE-BASE** | It started editing before merging the base branch, after the lead had already merged something. Live, git has the last word: no flag once its HEAD contains the base, and the flag says how many commits behind it is | Expect conflicts; have it merge the base before it goes further |
@@ -264,7 +264,9 @@ Judgments are cached in `~/.cache/tracon/judgments.json`, so replays and restart
 Most of the "What to do" advice above is "have the lead…". Press `n` on an agent (in the table
 or its detail) and tracon nudges the lead with that note: the agent's id, state, flags, the
 judge's concern, and the matching advice, phrased for the lead's own tools (`SendMessage`,
-`TaskStop`). It is sent as soon as you press the key; a notification confirms it.
+`TaskStop`). When the note is about refusals, drift or a stuck agent and the agent has been
+refused anything, it quotes the last refusal word for word, so the lead can check the claim
+without opening the transcript. It is sent as soon as you press the key; a notification confirms it.
 
 It is delivered through Claude Code's cross-session inbox: tracon finds the lead's process in
 `~/.claude/sessions/` and writes one message to the Unix socket listed there. The lead sees it

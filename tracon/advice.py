@@ -19,7 +19,8 @@ STATE_ADVICE = {
 FLAG_ADVICE = {
     "LOOP": "It is repeating itself. SendMessage it the piece it is missing, or TaskStop it.",
     "ERRORS": "Its recent tool calls failed. Check whether it is recovering before you step in.",
-    "DENIED": "Tool calls were denied. If it needs that permission, ask the user to allow it, then tell the agent to retry.",
+    "DENIED": "Tool calls were denied or refused. If it needs a denied permission, ask the user to allow it, then tell the agent "
+    "to retry; if a guard refused it, tell it to do what the refusal says, or to report what it can't do.",
     "OUTSIDE": "It edited the main checkout instead of its worktree. Check `git status` there and undo or move those edits.",
     "BRANCH": "Its worktree is on a different branch from the one it was given. Check it hasn't committed to the wrong branch before merging.",
     "STALE-BASE": "It started editing on a base that has since moved. Tell it to merge the base branch before going further.",
@@ -34,6 +35,9 @@ FLAG_ADVICE = {
     "STUCK": "It may be stuck (the judge's concern above). Give it the missing piece, or TaskStop it and re-dispatch.",
 }
 
+# Flags where the refusal's own words let the lead check the claim in one glance.
+QUOTE_REFUSAL_FOR = {"DENIED", "DRIFT", "STUCK"}
+
 
 def compose(st: Status) -> str:
     a = st.agent
@@ -45,8 +49,15 @@ def compose(st: Status) -> str:
     concern = getattr(j, "concern", "") if j is not None and not getattr(j, "error", "") else ""
     if concern and not any(f.detail == concern for f in flags):  # DRIFT/STUCK already carry it
         lines += ["", f"Judge ({j.verdict}): {concern}"]
+    if {f.code for f in flags} & QUOTE_REFUSAL_FOR:
+        blocked = [e for e in a.transcript.events if e.kind == "tool_result" and (e.rejected or e.refused)]
+        if blocked:
+            e = blocked[-1]
+            when = e.ts.astimezone().strftime("%H:%M") + (f", {len(blocked)} in all" if len(blocked) > 1 else "")
+            text = a.shorten(e.text or e.summary)
+            lines += ["", f"Its last refusal ({when}): {text if len(text) <= 500 else text[:499] + '…'}"]
     tips = [STATE_ADVICE[st.state]] if st.state in STATE_ADVICE else []
-    tips += [FLAG_ADVICE[c] for c in dict.fromkeys(f.code for f in flags) if c in FLAG_ADVICE]
+    tips += [FLAG_ADVICE[c] for c in dict.fromkeys(f.code for f in flags if f.severity != "info") if c in FLAG_ADVICE]
     if tips:
         lines += ["", "Suggested:"] + [f"- {t}" for t in tips]
     lines += ["", "Sent by the user from tracon, which monitors this session's subagents. Verify before acting."]

@@ -35,12 +35,12 @@ class Lane:
         self.recs[aid] = [{"type": "user", "timestamp": ts(start), "cwd": wt, "message": {"content": brief}}]
         return wt
 
-    def call(self, aid, m, name, inp, ok=True):
+    def call(self, aid, m, name, inp, ok=True, out="ok"):
         self.n += 1
         tid = f"t{self.n}"
         cwd = self.recs[aid][0]["cwd"]
         self.recs[aid].append({"type": "assistant", "timestamp": ts(m), "cwd": cwd, "message": {"id": tid, "content": [{"type": "tool_use", "id": tid, "name": name, "input": inp}]}})
-        self.recs[aid].append({"type": "user", "timestamp": ts(m + 0.01), "cwd": cwd, "message": {"content": [{"type": "tool_result", "tool_use_id": tid, "content": "ok", "is_error": not ok}]}})
+        self.recs[aid].append({"type": "user", "timestamp": ts(m + 0.01), "cwd": cwd, "message": {"content": [{"type": "tool_result", "tool_use_id": tid, "content": out, "is_error": not ok}]}})
 
     def edit(self, aid, m, rel):
         wt = self.recs[aid][0]["cwd"]
@@ -127,6 +127,25 @@ def test_judge_due_needs_new_calls_and_time(lane, tmp_path):
     j.budget_usd = 1.0
     j.history = {}
     assert not j.due(agent, finished=False)  # over budget
+
+
+def refusal(wt):
+    """Claude Code's worktree guard, as #768 met it three times in a row."""
+    return (f"This agent is isolated in the worktree {wt}, but this command runs godot-test with a value computed at "
+            "runtime (the variable S) inside a construct too complex to verify, so what it runs cannot be shown not to be "
+            "git. Refusing to run it — a worktree-isolated agent's git operations must target its own worktree. "
+            f"Split it into plain, separate commands and run them from {wt}.")
+
+
+def test_judge_sees_the_whole_refusal_with_the_worktree_shortened(lane):
+    wt = lane.agent("a", "#768 night plan", 0, brief="If a command is refused once, report the exact refusal text; never reword it repeatedly.")
+    lane.call("a", 1, "Bash", {"command": "S=$PWD/.scratch; nohup tools/godot-test 12000 > $S/direct.log &"}, ok=False, out=refusal(wt))
+    lane.call("a", 1.1, "Bash", {"command": "nohup tools/godot-test 12000 > .scratch/direct.log &"})
+    prompt, _, _ = build_prompt(lane.session().agents["a"], lane.session())
+    assert "refused: This agent is isolated in the worktree <worktree>, but" in prompt
+    assert "Split it into plain, separate commands and run them from <worktree>." in prompt
+    assert wt not in prompt.split("Last ")[-1]
+    assert "not rewording around it" in judge_mod.SYSTEM and "until the agent hands back" in judge_mod.SYSTEM
 
 
 def test_judge_cli_backend_parses_structured_output(lane, tmp_path, monkeypatch):

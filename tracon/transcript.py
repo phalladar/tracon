@@ -33,6 +33,13 @@ REJECTED_MARKERS = (
     "Request interrupted by user",
     "Permission for this action was denied",
 )
+# A guard (Claude Code's worktree isolation, its sleep block) refused the call and said what to
+# do instead. Not a permission the user could grant.
+REFUSED_MARKERS = (
+    "Refusing to run",
+    "<tool_use_error>Blocked:",
+)
+ERROR_TEXT_MAX = 1500  # failed results keep this much text; `summary` is only a feed line
 
 MERGE_BASE_RE = re.compile(r"\bgit\s+(merge|rebase|pull|reset)\b[^\n;&|]*\b(master|main)\b")
 COMMIT_RE = re.compile(r"\bgit\s+commit\b")
@@ -54,6 +61,8 @@ class Event:
     tool_id: str = ""
     is_error: bool = False
     rejected: bool = False
+    refused: bool = False  # refused by a guard (REFUSED_MARKERS), not denied a permission
+    text: str = ""  # a failed result's text, one line, up to ERROR_TEXT_MAX; an agent's text in full
     path: str = ""  # file edited, for edit tools
     background: bool = False
     detached: bool = False  # backgrounded by the shell (nohup, &): never reports back to the agent
@@ -186,14 +195,18 @@ class Transcript:
             if b.get("type") == "tool_result":
                 text = _result_text(b.get("content"))
                 rejected = any(m in text for m in REJECTED_MARKERS)
+                refused = not rejected and any(m in text for m in REFUSED_MARKERS)
+                is_error = bool(b.get("is_error")) or rejected or refused
                 self.events.append(
                     Event(
                         ts,
                         "tool_result",
                         tool_id=b.get("tool_use_id", ""),
-                        is_error=bool(b.get("is_error")) or rejected,
+                        is_error=is_error,
                         rejected=rejected,
+                        refused=refused,
                         summary=_one_line(text),
+                        text=_one_line(text, ERROR_TEXT_MAX) if is_error else "",
                     )
                 )
             elif b.get("type") == "text":
