@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
+from rich.console import Console
 from rich.style import Style
 from rich.table import Table
 from rich.text import Text
@@ -49,6 +50,9 @@ LEAD_ID = "__lead__"
 CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 FEED_BLOCKS = 400
 PREVIEW_BLOCKS = 60
+CLAMP_LINES = 3  # a brief or a lead message shows this many lines until it is opened
+FEED_GUTTER = 14  # time, marker, padding and a scrollbar: the feed's width minus its body column
+_MEASURE = Console(width=10_000)  # only wraps text to count lines; never prints
 
 
 def tool_kind(tool: str) -> str:
@@ -124,16 +128,20 @@ class ToolGroup:
         return [e for e in self.events if e.kind == "tool_use"]
 
 
-def detail_blocks(agent: Agent, session: Session, at: datetime | None) -> list[tuple[Event, bool] | ToolGroup]:
+Block = tuple[Event, bool, int] | ToolGroup
+
+
+def detail_blocks(agent: Agent, session: Session, at: datetime | None) -> list[Block]:
     """An agent's feed: what it said in full, the lead's messages to it, and runs of tool calls
-    folded into a `ToolGroup`. A plain item is (event, from_lead)."""
+    folded into a `ToolGroup`. A plain item is (event, from_lead, key); keys, a group's included,
+    are unique within the feed (an event's index, or below zero for the lead's messages)."""
     return fold(agent.transcript.events, session.lead_messages(agent.id, at), at)
 
 
-def fold(events: list[Event], lead_msgs: list[Event], at: datetime | None) -> list[tuple[Event, bool] | ToolGroup]:
+def fold(events: list[Event], lead_msgs: list[Event], at: datetime | None) -> list[Block]:
     items = [(e.ts, i, e) for i, e in enumerate(iter_until(events, at))]
-    items += [(e.ts, -1, e) for e in lead_msgs]
-    out: list[tuple[Event, bool] | ToolGroup] = []
+    items += [(e.ts, -1 - j, e) for j, e in enumerate(lead_msgs)]
+    out: list[Block] = []
     for _, i, e in sorted(items, key=lambda x: x[0]):
         if i >= 0 and e.kind == "tool_result" and not e.is_error:
             continue  # a result that went fine adds nothing to its call
@@ -142,7 +150,7 @@ def fold(events: list[Event], lead_msgs: list[Event], at: datetime | None) -> li
                 out.append(ToolGroup(i))
             out[-1].events.append(e)
         else:
-            out.append((e, i < 0))
+            out.append((e, i < 0, i))
     return out
 
 
@@ -184,9 +192,33 @@ def _group_summary(g: ToolGroup, click: Style) -> Text:
     return t
 
 
-def render_detail(blocks: list[tuple[Event, bool] | ToolGroup], owner: str, is_open) -> Table:
+def _clamp(body: Text, width: int | None, opened: bool, click: Style) -> Text:
+    """`body` cut to CLAMP_LINES lines at `width`, the last ending in a clickable '… ▸ N more lines',
+    or in full with a '▴ less' to fold it again. Short enough, it comes back as it is."""
+    lines = body.wrap(_MEASURE, width or _MEASURE.width)
+    if len(lines) <= CLAMP_LINES:
+        return body
+    toggle = Style(color="cyan", bold=True) + click
+    if opened:
+        out = body.copy()
+        out.append("\n▴ less", style=toggle)
+        return out
+    more = f"▸ {len(lines) - CLAMP_LINES} more lines"
+    last = lines[CLAMP_LINES - 1]
+    last.rstrip()
+    if width:
+        last.truncate(max(width - len(more) - 2, 0))
+    out = Text("\n").join([*lines[: CLAMP_LINES - 1], last])
+    out.append("… ")
+    out.append(more, style=toggle)
+    return out
+
+
+def render_detail(blocks: list[Block], owner: str, is_open, width: int | None = None) -> Table:
     """Time, a marker, then the body, so wrapped lines hang under the body. A group of two or more
-    calls is one line whose ▸ and count run `app.toggle_tools(owner, key)` when clicked."""
+    calls is one line whose ▸ and count run `app.toggle_open(owner, key)` when clicked; a long
+    brief or lead message shows CLAMP_LINES lines (at `width`, the feed's) until it is clicked open."""
+    body_w = width - FEED_GUTTER if width and width > FEED_GUTTER + 20 else None
     grid = Table.grid(padding=(0, 1), expand=True)
     grid.add_column(no_wrap=True, style="grey50")
     grid.add_column(no_wrap=True)
@@ -204,18 +236,19 @@ def render_detail(blocks: list[tuple[Event, bool] | ToolGroup], owner: str, is_o
                 calls(b.events, "")
                 continue
             opened = is_open(owner, b.key)
-            click = Style(meta={"@click": f"app.toggle_tools({owner!r}, {b.key})"})
+            click = Style(meta={"@click": f"app.toggle_open({owner!r}, {b.key})"})
             arrow = Text("▾" if opened else "▸", style=Style(color="cyan", bold=True) + click)
             grid.add_row(local(b.events[0].ts), arrow, _group_summary(b, click))
             if opened:
                 calls(b.events, "  ")
             continue
-        e, from_lead = b
+        e, from_lead, key = b
+        click = Style(meta={"@click": f"app.toggle_open({owner!r}, {key})"})
         if from_lead:
             x = e.extra or {}
             body = Text(x["summary"] + "\n" if x.get("summary") else "", style="bold magenta")
-            body.append(_clip(x.get("message", ""), 2000), style="magenta")
-            grid.add_row(local(e.ts), Text("◆", style="bold magenta"), body)
+            body.append(x.get("message", "").strip(), style="magenta")
+            grid.add_row(local(e.ts), Text("◆", style="bold magenta"), _clamp(body, body_w, is_open(owner, key), click))
         elif e.kind == "text":
             grid.add_row(local(e.ts), Text("»", style="bold"), Text(e.text or e.summary))
         elif e.kind == "tool_use":  # a handback, kept out of the groups
@@ -223,15 +256,11 @@ def render_detail(blocks: list[tuple[Event, bool] | ToolGroup], owner: str, is_o
         elif e.kind == "coordinator":
             grid.add_row(local(e.ts), Text("◆", style="bold magenta"), Text.assemble(("lead: ", "bold magenta"), (e.summary, "magenta")))
         elif e.kind == "brief":
-            grid.add_row(local(e.ts), Text(""), Text.assemble(("brief: ", "bold"), (e.summary, "grey70")))
+            body = Text.assemble(("brief: ", "bold"), (e.text or e.summary, "grey70"))
+            grid.add_row(local(e.ts), Text(""), _clamp(body, body_w, is_open(owner, key), click))
         else:
             grid.add_row(local(e.ts), Text(""), Text(e.summary, style="red" if e.is_error else "grey50"))
     return grid
-
-
-def _clip(s: str, n: int) -> str:
-    s = s.strip()
-    return s if len(s) <= n else s[: n - 1] + "…"
 
 
 def notify(title: str, body: str) -> None:
@@ -295,7 +324,7 @@ class DetailScreen(Screen):
     BINDINGS = [
         Binding("escape,q", "app.pop_screen", "Back"),
         Binding("b", "toggle_brief", "Brief"),
-        Binding("e", "app.toggle_tools", "Expand tools"),
+        Binding("e", "app.toggle_open", "Expand all"),
         Binding("o", "app.open_worktree", f"Open in {OPEN_LABEL}"),
         Binding("c", "app.copy_path", "Copy path"),
         Binding("n", "app.nudge_lead", "Nudge lead"),
@@ -317,7 +346,11 @@ class DetailScreen(Screen):
 
     def on_mount(self) -> None:
         self.refresh_view()
+        self.call_after_refresh(self.refresh_view)  # again once the feed has a width to clamp at
         self.call_after_refresh(self.query_one("#detail-feed", VerticalScroll).scroll_end, animate=False)
+
+    def on_resize(self, _event) -> None:
+        self.call_after_refresh(self.refresh_view)
 
     def action_toggle_brief(self) -> None:
         self.show_brief = not self.show_brief
@@ -334,7 +367,8 @@ class DetailScreen(Screen):
         scroller = self.query_one("#detail-feed", VerticalScroll)
         at_end = scroller.scroll_y >= scroller.max_scroll_y - 1
         blocks = detail_blocks(agent, app.session, app.at)[-FEED_BLOCKS:]
-        self.query_one("#detail-feed-text", Static).update(render_detail(blocks, self.agent_id, app.tools_open))
+        feed = render_detail(blocks, self.agent_id, app.is_open, scroller.scrollable_content_region.width)
+        self.query_one("#detail-feed-text", Static).update(feed)
         size = sum(len(b.events) if isinstance(b, ToolGroup) else 1 for b in blocks)
         if at_end and size != self._fed:
             self.call_after_refresh(scroller.scroll_end, animate=False)
@@ -656,7 +690,7 @@ class LaneApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("enter", "detail", "Detail", show=True),
-        Binding("e", "toggle_tools", "Expand tools"),
+        Binding("e", "toggle_open", "Expand all"),
         Binding("t", "timeline", "Timeline"),
         Binding("x", "files", "Files"),
         Binding("w", "web", "Web"),
@@ -710,8 +744,8 @@ class LaneApp(App):
         self._order: list[str] = []
         self._marked: str | None = None
         self._seen: dict[str, tuple[str, frozenset]] | None = None
-        self.tools_all = False  # `e`: every run of tool calls open
-        self.tools_toggled: set[tuple[str, int]] = set()  # runs clicked open (or shut, under tools_all)
+        self.open_all = False  # `e`: every run of tool calls, brief and lead message open
+        self.toggled: set[tuple[str, int]] = set()  # feed blocks clicked open (or shut, under open_all)
         self._previewed: tuple[str | None, int] = (None, 0)
 
     def compose(self) -> ComposeResult:
@@ -1015,21 +1049,24 @@ class LaneApp(App):
         follow = self._previewed[0] != aid or (
             scroller.scroll_y >= scroller.max_scroll_y - 1 and self._previewed[1] != size
         )
-        text.update(render_detail(blocks, aid, self.tools_open))
+        text.update(render_detail(blocks, aid, self.is_open, scroller.scrollable_content_region.width))
         if follow:
             self.call_after_refresh(scroller.scroll_end, animate=False)
         self._previewed = (aid, size)
 
-    def tools_open(self, owner: str, key: int) -> bool:
-        return ((owner, key) in self.tools_toggled) != self.tools_all
+    def on_resize(self, _event) -> None:
+        self.call_after_refresh(self.render_preview)  # long messages are clamped at the pane's width
 
-    def action_toggle_tools(self, owner: str | None = None, key: int | None = None) -> None:
-        """Open or shut one run of tool calls (a click), or all of them (`e`)."""
+    def is_open(self, owner: str, key: int) -> bool:
+        return ((owner, key) in self.toggled) != self.open_all
+
+    def action_toggle_open(self, owner: str | None = None, key: int | None = None) -> None:
+        """Open or shut one feed block, a run of tool calls or a long message (a click), or all of them (`e`)."""
         if owner is None or key is None:
-            self.tools_all = not self.tools_all
-            self.tools_toggled.clear()
+            self.open_all = not self.open_all
+            self.toggled.clear()
         else:
-            self.tools_toggled ^= {(owner, key)}
+            self.toggled ^= {(owner, key)}
         self.render_preview()
         if isinstance(self.screen, DetailScreen):
             self.screen.refresh_view()

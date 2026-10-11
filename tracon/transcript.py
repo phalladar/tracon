@@ -63,7 +63,7 @@ class Event:
     is_error: bool = False
     rejected: bool = False
     refused: bool = False  # refused by a guard (REFUSED_MARKERS), not denied a permission
-    text: str = ""  # a failed result's text, one line, up to ERROR_TEXT_MAX; an agent's text in full
+    text: str = ""  # a failed result's text, one line, up to ERROR_TEXT_MAX; an agent's text or brief in full
     path: str = ""  # file edited, for edit tools
     background: bool = False
     detached: bool = False  # backgrounded by the shell (nohup, &): never reports back to the agent
@@ -235,7 +235,7 @@ class Transcript:
             return
         if not self.brief:
             self.brief = t
-            self.events.append(Event(ts, "brief", summary=_one_line(t)))
+            self.events.append(Event(ts, "brief", summary=_one_line(t), text=t))
         elif t.startswith(COORDINATOR_PREFIX):
             self.events.append(Event(ts, "coordinator", summary=_one_line(t.split(":", 1)[-1])))
         elif t.startswith(SYSTEM_NOTIFICATION_PREFIX):

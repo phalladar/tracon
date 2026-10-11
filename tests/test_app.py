@@ -1,8 +1,13 @@
 import asyncio
 
-from tracon.app import LaneApp, ToolGroup, detail_blocks
+from datetime import datetime, timezone
+
+from rich.console import Console
+
+from tracon.app import LaneApp, ToolGroup, detail_blocks, render_detail
 from tracon.demo import Demo
 from tracon.signals import Thresholds
+from tracon.transcript import Event
 
 
 def test_rebuilding_the_table_keeps_the_mouse_hover(tmp_path):
@@ -62,13 +67,13 @@ def test_detail_shows_what_the_agent_said_and_folds_the_tool_calls(tmp_path):
             blocks = detail_blocks(app.session.agents[drifter], app.session, None)
             groups = [b.key for b in blocks if isinstance(b, ToolGroup)]
             said = [b[0].text for b in blocks if not isinstance(b, ToolGroup) and b[0].kind == "text"]
-            seen = [[app.tools_open(drifter, k) for k in groups]]
+            seen = [[app.is_open(drifter, k) for k in groups]]
             await pilot.click("#detail-feed-text", offset=(9, 1))  # the ▸ of the first run (row 0 is the brief)
             await pilot.pause(0.1)
-            seen.append([app.tools_open(drifter, k) for k in groups])
+            seen.append([app.is_open(drifter, k) for k in groups])
             await pilot.press("e")
             await pilot.pause(0.1)
-            seen.append([app.tools_open(drifter, k) for k in groups])
+            seen.append([app.is_open(drifter, k) for k in groups])
             return [type(b).__name__ if isinstance(b, ToolGroup) else b[0].kind for b in blocks], said, seen
 
     kinds, said, seen = asyncio.run(run())
@@ -94,10 +99,31 @@ def test_the_preview_under_the_table_folds_tool_calls_too(tmp_path):
             # brief, run, said, run, said (three lines), run: the newest run is row 7
             await pilot.click("#preview-text", offset=(9, 7))
             await pilot.pause(0.1)
-            return app.tools_open(drifter, last), preview.max_scroll_y > 0
+            return app.is_open(drifter, last), preview.max_scroll_y > 0
 
     opened, scrolls = asyncio.run(run())
     assert opened and scrolls  # its 23 calls no longer fit in the pane
+
+
+def test_a_long_brief_or_lead_message_shows_three_lines_until_opened():
+    ts = datetime(2026, 10, 11, 17, 0, tzinfo=timezone.utc)
+    brief = Event(ts, "brief", text="You are the board clerk. " * 40 + "The very last instruction.")
+    msg = Event(ts, "tool_use", tool="SendMessage", extra={"summary": "Change of plan", "message": "line\n" * 9})
+    short = Event(ts, "brief", text="Fix the login form.")
+    blocks = [(brief, False, 0), (msg, True, -1), (short, False, 1)]
+
+    def shown(opened: set[int]) -> str:
+        console = Console(width=100, record=True)
+        console.print(render_detail(blocks, "a1", lambda _owner, key: key in opened, 100))
+        return console.export_text()
+
+    folded = [line.rstrip() for line in shown(set()).splitlines()]
+    assert len(folded) == 3 + 3 + 1
+    assert folded[2].endswith("more lines") and "very last" not in "".join(folded)
+    assert "▸ 7 more lines" in folded[5]  # summary, then 9 lines: 3 shown
+    assert "Fix the login form." in folded[6]
+    opened = shown({0, -1})
+    assert "The very last instruction." in opened and opened.count("▴ less") == 2
 
 
 class FakeChooser:
