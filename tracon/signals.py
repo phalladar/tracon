@@ -387,7 +387,8 @@ def _flags(st, agent, session, events, at, probe, th) -> list[Flag]:
 
     if probe and any(p.orphan for p in probe.procs):
         o = next(p for p in probe.procs if p.orphan)
-        sev = "warn" if st.state in ("RUNNING", "WORKING", "WAITING") else "bad"
+        # A working agent is usually still polling its own nohup run; it is a leftover only once it goes quiet.
+        sev = "info" if st.state in ("RUNNING", "WORKING", "WAITING") else "bad"
         flags.append(Flag("ORPHAN", sev, f"detached pid {o.pid} running {o.etime}: {o.command[:90]}"))
 
     if st.finished:  # history, not something to act on — except leftovers in the worktree

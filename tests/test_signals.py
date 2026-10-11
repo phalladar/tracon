@@ -314,6 +314,14 @@ def test_brief_wants_foreground():
     )
 
 
+def test_detached_process_of_a_working_agent_is_info(b):
+    b.bash(1, "nohup tools/godot-test 6000 --headless res://test/walk.tscn > .scratch/walk.log 2>&1 &")
+    b.bash(9, "until grep -q DONE .scratch/walk.log; do sleep 30; done", done=False)
+    st = b.assess(10, probe(["sh -c tools/godot-test 6000"], orphan=True), live=True)
+    assert st.state == "RUNNING"
+    assert any(f.code == "ORPHAN" and f.severity == "info" for f in st.flags)
+
+
 # -- agents that finish without a hand-back tool ------------------------------
 
 

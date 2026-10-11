@@ -215,7 +215,7 @@ on its agents or on you), so its activity is never mistaken for a subagent's.
 | **BG** | It launched background or detached runs. Amber when its brief says to run in the foreground and nowhere allows a background or `nohup` run | If amber, it is ignoring the brief; have the lead remind it |
 | **UNCOMMITTED** | Edits left uncommitted for 45 min | Work at risk if the worktree is cleaned up; have it commit |
 | **CTX** | Context above 300k (amber) or 450k (red) tokens | It will slow down and forget earlier instructions. Have it wrap up and hand back, or re-dispatch the rest fresh |
-| **ORPHAN** | A detached process is still running from its worktree | Kill it once you're sure nothing needs it |
+| **ORPHAN** | A detached process is still running from its worktree. Grey while the agent is still working (usually it is polling its own `nohup` run); red once the agent goes quiet or finishes | Kill it once you're sure nothing needs it |
 | **DRIFT** | The judge says it is drifting (below) | See below |
 | **STUCK** | The judge says it is stuck (below) | See below |
 
