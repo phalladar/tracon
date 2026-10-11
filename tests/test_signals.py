@@ -325,6 +325,13 @@ def test_incremental_read_handles_partial_lines(tmp_path):
     assert len(t.events) == 1 and t.brief == "brief"
 
 
+def test_compact_drops_context_at_the_boundary(b):
+    b.call(1, "Read", {"file_path": WT + "/core/ids.gd"}, "ok")
+    b.agent.append({"type": "system", "subtype": "compact_boundary", "timestamp": ts(2), "compactMetadata": {"trigger": "manual", "preTokens": 1010, "postTokens": 90}})
+    assert b.assess(1.5).ctx == 1010
+    assert b.assess(3).ctx == 90
+
+
 def test_detached_launch_counts_as_background(b):
     b.bash(1, "nohup tools/godot-test 6000 --headless res://test/walk.tscn > /tmp/run.log 2>&1 &")
     b.bash(2, "make build && echo ok")

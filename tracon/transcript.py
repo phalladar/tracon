@@ -140,6 +140,12 @@ class Transcript:
                 if prompt.strip().startswith("<task-notification>"):
                     self._user_text(parse_ts(ts_raw), prompt)
             return
+        if rtype == "system" and rec.get("subtype") == "compact_boundary" and ts_raw:
+            # /compact (or auto-compact): context drops now, not at the next assistant turn.
+            post = (rec.get("compactMetadata") or {}).get("postTokens")
+            if isinstance(post, int):
+                self.ctx.append((parse_ts(ts_raw), post))
+            return
         if rtype not in ("user", "assistant") or not ts_raw:
             return
         ts = parse_ts(ts_raw)
