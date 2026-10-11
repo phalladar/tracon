@@ -43,6 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--judge-backend", choices=["auto", "api", "cli"], default="auto", help="api = Anthropic SDK with ANTHROPIC_API_KEY; cli = `claude -p` on your login (auto picks)")
     p.add_argument("--judge-budget", type=float, default=1.0, help="stop judging after this many dollars per run (default 1.00)")
     p.add_argument("--judge-every", type=float, default=3, help="minimum minutes between checks of one agent (default 3)")
+    p.add_argument("--title-prefix", default="◎ ", help="prefix for the terminal title, which tracon sets to the watched session's name (default '◎ ')")
+    p.add_argument("--no-title", action="store_true", help="leave the terminal title alone")
     p.add_argument("--port", type=int, default=8765, help="web view port (default 8765; the next free one is used)")
     return p
 
@@ -83,7 +85,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     from .app import LaneApp
 
-    LaneApp(refs, at=at, thresholds=th, notify=not args.no_notify, judge=judge, web_port=args.port).run()
+    app = LaneApp(refs, at=at, thresholds=th, notify=not args.no_notify, judge=judge, web_port=args.port,
+                  title_prefix=None if args.no_title else args.title_prefix)
+    try:
+        app.run()
+    finally:
+        if not args.no_title:
+            sys.stdout.write("\x1b[23;2t")  # restore the title saved at start
+            sys.stdout.flush()
     return 0
 
 

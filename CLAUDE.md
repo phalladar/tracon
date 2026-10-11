@@ -45,6 +45,10 @@ uv run tracon web --no-judge                    # browser view only
   `Builder` in `test_signals.py` and `Lane` in `test_lane.py`), and a row in README.md.
 - Flags on finished agents drop to `info` (history, not action). Only `OUTSIDE` and `ORPHAN`
   stay loud.
+- "Finished" has several sources, strongest first: the lead's `<task-notification>` (status
+  completed/failed/killed/stopped; a later event means it was resumed), a `SubagentHandback`
+  call, or a final `end_turn` text with nothing pending. A completion while the agent's own
+  background launches may still run is WAITING (parked mid-task), not REPORTED.
 - Don't infer the branch from a transcript's `gitBranch` field: it doesn't follow the agent's
   worktree. Use the live probe.
 - Web page: build DOM with `textContent` / `createElement`, never `innerHTML`. Transcript text
@@ -61,6 +65,9 @@ uv run tracon web --no-judge                    # browser view only
 
 - Textual `RichLog` wraps lines at the width when written, which is 80 columns before layout.
   The detail feed uses a `Static` in a `VerticalScroll` instead so it reflows.
+- The terminal title is set with OSC 2 through the Textual driver; the title stack is pushed
+  (`CSI 22;2t`) on mount and popped (`CSI 23;2t`) by `cli.py` after `app.run()` returns.
+  Verify escape output by running `tracon` in a `pty` and reading the bytes.
 - `DataTable` is rebuilt on every tick; keep the cursor by row key (`_order`).
 - Checking UI changes: drive the app with `App.run_test()` + `pilot`, `save_screenshot()` to
   SVG, then `qlmanage -t -s 1800 -o <dir> file.svg` to get a PNG. Headless Chrome screenshots

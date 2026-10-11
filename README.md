@@ -34,7 +34,15 @@ your repository.
 | Drift a rule can't see | **↯ DRIFT / ⟳ STUCK** from an optional LLM check of brief vs. recent activity |
 | Context bloat, uncommitted work | **CTX** above 300k / 450k tokens, **UNCOMMITTED** edits older than 45 min |
 
-While it runs, a macOS notification fires when an agent needs you.
+A pinned **◆ lead** row shows the orchestrating session itself (running, working, or waiting
+on its agents or on you), so its activity is never mistaken for a subagent's. An agent counts
+as finished when it hands back a report, when the lead is notified it completed, or when it
+ends its turn with a final answer and leaves nothing running. One that stops while its own
+background work is still going shows as **⏳ WAITING**, not done.
+
+While it runs, a macOS notification fires when an agent needs you, and the terminal title is
+set to the watched session's name (`◎ <name>`, mirroring Claude Code's `✳ <name>`), so the
+split reads as part of that session.
 
 ## Install
 
@@ -119,6 +127,8 @@ Judgments are cached in `~/.cache/tracon/judgments.json`, so replays and restart
 | `--judge-budget USD` | 1.00 | stop judging after this much per run |
 | `--judge-every MIN` | 3 | minimum time between checks of one agent |
 | `--port` | 8765 | browser view port (the next free one if taken) |
+| `--title-prefix` | `◎ ` | prefix for the terminal title tracon sets to the session's name |
+| `--no-title` | | leave the terminal title alone |
 
 ## How it works
 

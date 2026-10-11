@@ -74,6 +74,7 @@ class LaneState:
             now = at or datetime.now(timezone.utc)
             return {
                 "lane": s.lane(),
+                "title": s.title(),
                 "project": (s.lead.cwd.rstrip("/").split("/")[-1] if s.lead.cwd else s.ref.project_name),
                 "session": s.ref.session_id,
                 "live": at is None,

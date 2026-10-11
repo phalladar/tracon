@@ -264,8 +264,8 @@ async function load() {
 // ---------------------------------------------------------------- header
 function renderHeader() {
   const d = S.data;
-  $("lane").textContent = d.lane || "Lane";
-  document.title = (d.lane ? d.lane + " · " : "") + "TRACON";
+  $("lane").textContent = d.title || d.lane || "Session";
+  document.title = "◎ " + (d.title || d.lane || "tracon");
   $("meta").textContent = `${d.project} · session ${d.session.slice(0, 8)}`;
   const mode = $("mode");
   mode.className = "badge " + (d.live ? "live" : "replay");

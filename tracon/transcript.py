@@ -20,6 +20,9 @@ HANDBACK_TOOLS = {"SubagentHandback"}
 COORDINATION_TOOLS = {"SendMessage", "TaskStop", "Agent", "Task"}
 COMMAND_RE = re.compile(r"<command-name>/?([^<]+)</command-name>")
 COMMAND_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.S)
+# The lead is told when a background task (agent or shell) stops. Status is one of
+# completed / failed / killed / stopped. The same task may notify again after a resume.
+TASK_NOTE_RE = re.compile(r"<task-id>([^<]+)</task-id>.*?<status>([^<]+)</status>(?:.*?<summary>([^<]*)</summary>)?", re.S)
 
 COORDINATOR_PREFIX = "The coordinator sent a message"
 SYSTEM_NOTIFICATION_PREFIX = "[SYSTEM NOTIFICATION"
@@ -52,7 +55,8 @@ class Event:
     rejected: bool = False
     path: str = ""  # file edited, for edit tools
     background: bool = False
-    extra: dict | None = None  # raw input, kept only for coordination tools
+    extra: dict | None = None  # raw input for coordination tools; parsed fields for task notes
+    final: bool = False  # text that ended the agent's turn (stop_reason end_turn)
 
 
 @dataclass
@@ -67,6 +71,9 @@ class Transcript:
     output_tokens: int = 0
     cwd: str = ""
     commands: list[tuple[datetime, str, str]] = field(default_factory=list)  # slash commands
+    model: str = ""  # last model seen on an assistant message
+    title: str = ""  # Claude Code's generated session title (lead transcripts)
+    name: str = ""  # the session's name from /rename, if any
     _offset: int = 0
     _partial: bytes = b""
     _seen_msg_ids: set = field(default_factory=set)
@@ -101,6 +108,12 @@ class Transcript:
     def _ingest(self, rec: dict) -> None:
         rtype = rec.get("type")
         ts_raw = rec.get("timestamp")
+        if rtype == "ai-title" and rec.get("aiTitle"):
+            self.title = rec["aiTitle"]
+            return
+        if rtype == "agent-name" and rec.get("agentName"):
+            self.name = rec["agentName"]  # set by /rename; wins over the generated title
+            return
         if rtype not in ("user", "assistant") or not ts_raw:
             return
         ts = parse_ts(ts_raw)
@@ -119,6 +132,9 @@ class Transcript:
     def _assistant(self, ts: datetime, msg: dict, content) -> None:
         usage = msg.get("usage") or {}
         mid = msg.get("id")
+        if msg.get("model") and not msg["model"].startswith("<"):
+            self.model = msg["model"]
+        final = msg.get("stop_reason") == "end_turn"
         if usage and mid not in self._seen_msg_ids:
             # One API response is split over several records that repeat its usage.
             self._seen_msg_ids.add(mid)
@@ -137,7 +153,7 @@ class Transcript:
             if bt == "tool_use":
                 self.events.append(_tool_use_event(ts, b, self.cwd))
             elif bt == "text" and b.get("text", "").strip():
-                self.events.append(Event(ts, "text", summary=_one_line(b["text"])))
+                self.events.append(Event(ts, "text", summary=_one_line(b["text"]), final=final))
 
     def _user(self, ts: datetime, content) -> None:
         if isinstance(content, str):
@@ -172,6 +188,12 @@ class Transcript:
         if m and t.startswith("<command-"):
             a = COMMAND_ARGS_RE.search(t)
             self.commands.append((ts, m.group(1).strip(), a.group(1).strip() if a else ""))
+            return
+        if t.startswith("<task-notification>"):
+            n = TASK_NOTE_RE.search(t)
+            if n:
+                note = {"task_id": n.group(1).strip(), "status": n.group(2).strip(), "summary": (n.group(3) or "").strip()}
+                self.events.append(Event(ts, "task_note", summary=f"{note['status']}: {note['summary']}", extra=note))
             return
         if not self.brief:
             self.brief = t

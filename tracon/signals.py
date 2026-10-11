@@ -148,7 +148,23 @@ def _state(agent, session, events, at, now, probe, th) -> tuple[str, str]:
     if stopped and last.ts <= stopped + _seconds(5):
         return "STOPPED", "stopped by the lead"
 
+    # The lead's task notification is authoritative, unless the agent was resumed after it.
     handback = _last_handback(events)
+    note = session.task_note(agent.id, now)
+    if note and last.ts <= note.ts + _seconds(5):
+        status = note.extra.get("status", "")
+        final_text = _final_text(events)
+        if status == "completed":
+            parked = [
+                e for e in events
+                if e.kind == "tool_use" and e.background and (handback is None or e.ts > handback.ts)
+            ]
+            if parked:
+                # It stopped while work it launched was still going: parked mid-task, not done.
+                return "WAITING", f"stopped mid-task while its background work runs (lead told 'completed'): {final_text}"
+            return "REPORTED", final_text or note.extra.get("summary", "") or "completed"
+        return "STOPPED", f"{status}: {final_text or note.extra.get('summary', '')}"
+
     if handback is not None and not any(
         e.kind == "tool_use" and e.ts > handback.ts and e.tool not in HANDBACK_TOOLS for e in events
     ):
@@ -156,6 +172,17 @@ def _state(agent, session, events, at, now, probe, th) -> tuple[str, str]:
 
     live = probe.live if probe else None
     orphans = [p for p in probe.procs if p.orphan] if probe else []
+
+    # Agents without a hand-back tool (Explore, general-purpose) finish by ending their turn
+    # with a final answer. If they left work running they are waiting on it, not done.
+    if last.kind == "text" and last.final and not _pending(events):
+        if live:
+            return "WAITING", f"ended its turn; background work still running: {probe.leaf_command()[:80]}"
+        if live is None and any(e.kind == "tool_use" and e.background for e in events):
+            # No process data (replay, or no worktree) and it launched background work: it may
+            # be parked until that work notifies it. The lead's task note settles it either way.
+            return "WAITING", "ended its turn; may be waiting on background work it launched"
+        return "REPORTED", last.summary
 
     pending = _pending(events)
     if pending:
@@ -195,6 +222,15 @@ def _pending(events: list[Event]) -> Event | None:
     done = {e.tool_id for e in events if e.kind == "tool_result"}
     open_calls = [e for e in events if e.kind == "tool_use" and e.tool_id and e.tool_id not in done]
     return open_calls[0] if open_calls else None
+
+
+def _final_text(events: list[Event]) -> str:
+    for e in reversed(events):
+        if e.kind == "tool_use":
+            return ""
+        if e.kind == "text" and e.final:
+            return e.summary
+    return ""
 
 
 def _last_handback(events: list[Event]) -> Event | None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import webbrowser
 from datetime import datetime, timedelta, timezone
@@ -19,7 +20,7 @@ from .judge import Judge, Judgment
 from .lane import FileMatrix, assess_all, card_label
 from .probe import Prober, WorktreeProbe
 from .session import Agent, Session, SessionRef, find_sessions
-from .signals import Status, Thresholds, fmt_duration
+from .signals import Status, Thresholds, _pending, fmt_duration
 from .transcript import EDIT_TOOLS, HANDBACK_TOOLS, Event, iter_until
 
 # Status colours (good / warning / serious / critical) are kept apart from the activity colours,
@@ -36,6 +37,8 @@ VERDICT_CELL = {
 NOTIFY_STATES = {"BLOCKED", "IDLE", "STALLED", "ORPHANED"}
 NOTIFY_FLAGS = {"DRIFT", "STUCK", "COLLIDE"}  # notify on these even though they are warnings
 CTX_SCALE = 500_000
+LEAD_ID = "__lead__"
+CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 FEED_LINES = 600
 
 
@@ -472,8 +475,11 @@ class LaneApp(App):
         notify: bool,
         judge: Judge | None = None,
         web_port: int = 8765,
+        title_prefix: str | None = "◎ ",
     ) -> None:
         super().__init__()
+        self.title_prefix = title_prefix
+        self._term_title: str | None = None
         self.judge = judge
         self.matrix = FileMatrix([], [])
         self.web_port = web_port
@@ -498,6 +504,8 @@ class LaneApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        if self.title_prefix is not None:
+            self._terminal_write("\x1b[22;2t")  # save the terminal's title; cli restores it on exit
         table = self.query_one(DataTable)
         for label, key in [
             ("", "icon"), ("STATE", "state"), ("CARD", "card"), ("MODEL", "model"), ("JUDGE", "judge"), ("NOW", "now"),
@@ -585,8 +593,11 @@ class LaneApp(App):
     def render_header(self) -> None:
         s = self.session
         t = Text()
-        t.append("LANE ", style="bold")
-        t.append(f"{s.lane() or '?'}", style="bold cyan")
+        title = s.title()
+        t.append(title, style="bold cyan")
+        if s.lane() and s.lane() != title:
+            t.append(f"  lane {s.lane()}", style="cyan")
+        self._set_terminal_title(title)
         project = os.path.basename(s.lead.cwd) if s.lead.cwd else s.ref.project_name
         t.append(f"   {project} · session {s.ref.session_id[:8]}", style="grey58")
         lead_ev = list(iter_until(s.lead.events, self.at))
@@ -622,6 +633,42 @@ class LaneApp(App):
             t.append(f"   live {datetime.now().strftime('%H:%M:%S')}", style="green")
         self.query_one("#header", Static).update(t)
 
+    def _terminal_write(self, seq: str) -> None:
+        driver = getattr(self, "_driver", None)
+        if driver is not None:
+            try:
+                driver.write(seq)
+                driver.flush()
+            except Exception:
+                pass
+
+    def _set_terminal_title(self, title: str) -> None:
+        """Name this split after the session it watches, the way Claude Code names its own tab."""
+        if self.title_prefix is None:  # --no-title
+            return
+        want = CONTROL_CHARS.sub("", f"{self.title_prefix}{title}")[:120]
+        if want != self._term_title:
+            self._term_title = want
+            self._terminal_write(f"\x1b]2;{want}\x07")
+
+    def lead_row(self) -> tuple[str, str, str]:
+        """(state, severity, now) for the orchestrating session itself."""
+        events = list(iter_until(self.session.lead.events, self.at))
+        if not events:
+            return "STARTING", "ok", ""
+        now = self.at or datetime.now(timezone.utc)
+        pending = _pending(events)
+        last_call = next((e for e in reversed(events) if e.kind == "tool_use"), None)
+        doing = f"{last_call.tool}: {last_call.summary}" if last_call else events[-1].summary
+        if pending:
+            return "RUNNING", "ok", f"{pending.tool}: {pending.summary}"
+        if (now - events[-1].ts).total_seconds() < 90:
+            return "WORKING", "ok", doing
+        active = sum(1 for st in self.statuses.values() if not st.finished)
+        if active:
+            return "WAITING", "done", f"waiting on {active} agent{'s' if active > 1 else ''}"
+        return "WAITING", "done", "waiting on you"
+
     def render_table(self) -> None:
         table = self.query_one(DataTable)
         selected = self.selected_id()
@@ -630,6 +677,24 @@ class LaneApp(App):
             rows = [r for r in rows if not r.finished]
         table.clear()
         self._order = []
+        lstate, lsev, lnow = self.lead_row()
+        lead_ctx = [c for t, c in self.session.lead.ctx if self.at is None or t <= self.at]
+        lead_events = list(iter_until(self.session.lead.events, self.at))
+        lead_age = ((self.at or datetime.now(timezone.utc)) - lead_events[-1].ts).total_seconds() if lead_events else 0
+        table.add_row(
+            Text("◆", style="bold magenta"),
+            Text(lstate, style=SEV_STYLE[lsev]),
+            Text("lead · " + self.session.title()[:27], style="bold magenta"),
+            Text(self.session.lead.model.replace("claude-", "").split("-")[0] if self.session.lead.model else "", style="grey58"),
+            Text(""),
+            Text(lnow[:70]),
+            Text(fmt_duration(lead_age), style="grey58"),
+            Text(""),
+            ctx_bar(lead_ctx[-1], self.th) if lead_ctx else Text(""),
+            Text(""), Text(""), Text(""), Text(""),
+            key=LEAD_ID,
+        )
+        self._order.append(LEAD_ID)
         for st in rows:
             sev = SEV_STYLE[st.severity]
             off = f" ({len(st.off_brief)}⚑)" if st.off_brief else ""
@@ -666,6 +731,11 @@ class LaneApp(App):
         log = self.query_one("#preview", RichLog)
         log.clear()
         aid = self.selected_id()
+        if aid == LEAD_ID:
+            lines = [event_line(e) for e in iter_until(self.session.lead.events, self.at)]
+            for line in [x for x in lines if x is not None][-10:]:
+                log.write(line)
+            return
         agent = self.session.agents.get(aid) if aid else None
         if not agent:
             return
@@ -688,7 +758,7 @@ class LaneApp(App):
 
     def action_detail(self) -> None:
         aid = self.selected_id()
-        if aid:
+        if aid and aid != LEAD_ID:
             self.push_screen(DetailScreen(aid))
 
     def action_timeline(self) -> None:

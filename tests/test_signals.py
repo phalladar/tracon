@@ -266,3 +266,90 @@ def test_detached_launch_counts_as_background(b):
     b.bash(2, "make build && echo ok")
     f = next(f for f in b.assess(3).flags if f.code == "BG")
     assert "1 background" in f.detail and f.severity == "info"
+
+
+# -- agents that finish without a hand-back tool ------------------------------
+
+
+def final_text(b, m, text, stop="end_turn"):
+    b.agent.append({"type": "assistant", "timestamp": ts(m), "cwd": WT, "message": {"id": f"fin{m}", "stop_reason": stop, "model": "claude-opus-5-5", "content": [{"type": "text", "text": text}]}})
+
+
+def task_note(b, m, status, aid="a1"):
+    body = f"<task-notification>\n<task-id>{aid}</task-id>\n<status>{status}</status>\n<summary>Agent finished</summary>\n</task-notification>"
+    b.lead.append({"type": "user", "timestamp": ts(m), "message": {"content": body}})
+
+
+def test_final_answer_counts_as_reported(b):
+    b.bash(1, "grep -rn foo .")
+    final_text(b, 2, "Here is what I found.")
+    st = b.assess(20)
+    assert st.state == "REPORTED" and "what I found" in st.detail
+
+
+def test_text_mid_turn_is_not_final(b):
+    b.bash(1, "grep -rn foo .")
+    final_text(b, 2, "Looking further.", stop="tool_use")
+    assert b.assess(20).state == "IDLE"
+
+
+def test_final_answer_with_live_work_is_waiting(b):
+    b.bash(1, "nohup make long &")
+    final_text(b, 2, "Waiting for the build.")
+    assert b.assess(20, probe(["make long"]), live=True).state == "WAITING"
+
+
+def test_final_answer_after_background_launch_in_replay_is_waiting(b):
+    b.bash(1, "nohup make long &")
+    final_text(b, 2, "Waiting for the build.")
+    assert b.assess(20).state == "WAITING"
+
+
+def test_lead_task_note_completed_is_authoritative(b):
+    b.bash(1, "make")
+    final_text(b, 2, "All done.")
+    task_note(b, 3, "completed")
+    st = b.assess(20)
+    assert st.state == "REPORTED" and st.detail == "All done."
+
+
+def test_lead_task_note_failed_is_stopped(b):
+    b.bash(1, "make")
+    task_note(b, 2, "failed")
+    assert b.assess(20).state == "STOPPED"
+
+
+def test_resumed_after_task_note_is_active_again(b):
+    final_text(b, 1, "Done.")
+    task_note(b, 1.5, "completed")
+    b.user(3, "The coordinator sent a message while you were working: one more fix")
+    b.bash(3.5, "make test")
+    assert b.assess(4).state == "WORKING"
+
+
+def test_model_falls_back_to_transcript(b, tmp_path):
+    final_text(b, 1, "x")
+    s = b.session()
+    a = s.agents["a1"]
+    a.meta.pop("model")
+    assert a.model == "opus"
+
+
+def test_lane_falls_back_to_session_title(b):
+    b.lead.append({"type": "ai-title", "aiTitle": "macos-port-proposal"})
+    assert b.session().lane() == "macos-port-proposal"
+
+
+def test_completed_note_after_background_launch_is_parked(b):
+    b.bash(1, "nohup make long &")
+    final_text(b, 2, "Waiting on the walk.")
+    task_note(b, 3, "completed")
+    st = b.assess(20)
+    assert st.state == "WAITING" and "mid-task" in st.detail
+
+
+def test_session_title_prefers_rename_then_generated_title(b):
+    b.lead.append({"type": "ai-title", "aiTitle": "generated-title"})
+    assert b.session().title() == "generated-title"
+    b.lead.append({"type": "agent-name", "agentName": "my-renamed-session"})
+    assert b.session().title() == "my-renamed-session"

@@ -60,7 +60,12 @@ class Agent:
 
     @property
     def model(self) -> str:
-        return self.meta.get("model") or "?"
+        """'opus', 'sonnet', ... from the spawn metadata, else from the transcript itself."""
+        m = self.meta.get("model") or self.transcript.model
+        for family in ("opus", "sonnet", "haiku", "fable", "mythos"):
+            if family in m:
+                return family
+        return m.removeprefix("claude-") or "?"
 
     @property
     def worktree(self) -> str:
@@ -116,8 +121,22 @@ class Session:
         return [a for a in self.agents.values() if a.exists_at(now)]
 
     def lane(self) -> str:
-        """A name for the run: the arguments of the lead's latest slash command (e.g. `/expedite M4`)."""
-        return next((args for _, _, args in reversed(self.lead.commands) if args), "")
+        """A name for the run: the arguments of the lead's latest slash command (e.g. `/expedite M4`),
+        else Claude Code's generated session title."""
+        return next((args for _, _, args in reversed(self.lead.commands) if args), "") or self.lead.title
+
+    def title(self) -> str:
+        """What Claude Code calls this session in the terminal tab: the /rename name, else the
+        generated title, else the lane, else the project folder."""
+        return self.lead.name or self.lead.title or self.lane() or os.path.basename(self.lead.cwd or self.ref.project_name)
+
+    def task_note(self, agent_id: str, now: datetime | None = None) -> Event | None:
+        """The lead's latest notification that this agent stopped (completed/failed/killed/stopped)."""
+        hit = None
+        for e in iter_until(self.lead.events, now):
+            if e.kind == "task_note" and e.extra and e.extra.get("task_id") == agent_id:
+                hit = e
+        return hit
 
     def lead_messages(self, agent_id: str, now: datetime | None = None) -> list[Event]:
         return [
