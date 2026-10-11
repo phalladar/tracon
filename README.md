@@ -9,7 +9,10 @@ merge.
 [![tests](https://github.com/phalladar/tracon/actions/workflows/test.yml/badge.svg)](https://github.com/phalladar/tracon/actions/workflows/test.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-![A replay of a Claude Code run in the tracon browser view: seven subagents spawn and work over an hour and a half, coloured by edits, shell calls and reads, until two need attention, one is drifting and one is stuck](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/replay.gif)
+![A terminal split in two. On the left, a Claude Code session is asked to /expedite checkout-v2 and dispatches seven worktree agents. On the right, tracon lists them as they start; over the run one agent is blocked on a permission prompt, one goes idle, one drifts off its brief and one is stuck retrying a failing command. The user selects the stuck agent in tracon, presses m and sends the drafted note; it arrives in the Claude Code session, the lead messages the agent, and tracon shows it back on track.](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/hero.gif)
+
+<sub>Left: a Claude Code session orchestrating seven worktree agents. Right: tracon in a split next to it.
+A made-up run from <code>tracon --demo</code>, sped up.</sub>
 
 ```sh
 uvx tracon --demo     # look around a made-up run; no Claude Code session needed
@@ -132,6 +135,8 @@ A good layout: your orchestrating session on one side, `tracon` in a split next 
 ### Browser view
 
 `w` in the terminal, or `tracon web`, serves a page on `127.0.0.1`:
+
+![The tracon browser timeline replaying a run: seven subagents spawn and work, coloured by edits, shell calls and reads, with judge verdicts per agent and the lead's merges and messages along the top](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/replay.gif)
 
 - **Timeline**: zoom with the scroll wheel, drag to pan, double-click to fit. Hover any bar
   for the calls it covers. Silent stretches past the idle threshold are drawn in orange.
@@ -324,6 +329,7 @@ uv sync --group dev
 uv run pytest                      # synthetic transcripts; no Claude Code or network needed
 uv run tracon --once --no-judge   # quick check against your latest session
 uv run --with pillow python scripts/screenshots.py   # regenerate docs/screenshots from the demo (macOS, Chrome)
+uv run --with pillow python scripts/hero.py          # regenerate the README's split-terminal hero.gif
 ```
 
 See [CLAUDE.md](CLAUDE.md) for architecture notes and conventions.

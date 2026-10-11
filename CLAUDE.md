@@ -13,6 +13,7 @@ uv run tracon --once --no-judge --at "HH:MM"    # replay a moment (needs a real 
 uv run tracon web --no-judge                    # browser view only
 uv run tracon --demo                            # made-up run; no session needed
 uv run --with pillow python scripts/screenshots.py  # regenerate docs/screenshots + replay.gif
+uv run --with pillow python scripts/hero.py         # regenerate the README hero (split terminal)
 ```
 
 `tracon` on PATH is an editable `uv tool` install, so code changes apply immediately.
@@ -36,7 +37,9 @@ uv run --with pillow python scripts/screenshots.py  # regenerate docs/screenshot
   `~/.cache/tracon/`. Failures are recorded on the `Judgment`, never raised.
 - `demo.py`: `--demo`. Writes a synthetic lead + seven agents to a temp dir (times relative to
   now), with a canned `DemoProber` and `DemoJudge` (never calls a model) and a ticker thread
-  that keeps busy agents busy. `scripts/screenshots.py` drives it for the README images.
+  that keeps busy agents busy. `scripts/screenshots.py` drives it for the README images;
+  `scripts/hero.py` runs it on a virtual clock next to a scripted Claude Code pane (sending is
+  stubbed there) for the hero GIF. Re-run both after UI changes.
 - `advice.py`: drafts the note `m` sends the lead (state, flags, judge concern, advice
   mirroring README's "What to do"). Pure.
 - `inbox.py`: finds the lead's live process in `~/.claude/sessions/<pid>.json` and writes one
