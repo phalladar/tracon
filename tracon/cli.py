@@ -58,7 +58,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.json and not args.once:
+        parser.error("--json needs --once")
     demo = None
     if args.demo:
         from .demo import Demo
@@ -85,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         judge = demo.judge
     elif not args.no_judge:
         judge = Judge(model=args.judge_model, backend=args.judge_backend, budget_usd=args.judge_budget, min_interval_s=args.judge_every * 60)
-    if args.once or args.json:
+    if args.once:
         return print_snapshot(Session(refs[0]), at, th, judge, demo.prober if demo else None, as_json=args.json)
     if args.command == "web":
         import webbrowser
@@ -113,29 +116,29 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def snapshot_json(statuses: dict[str, Status] | list[Status]) -> list[dict]:
-    rows = sorted(statuses.values() if isinstance(statuses, dict) else statuses, key=lambda s: s.sort_key())
-    return [
-        {
-            "id": s.agent.id,
-            "description": s.agent.description,
-            "state": s.state,
-            "flags": [f.code for f in s.flags],
-            "quiet_s": round(s.age_s),
-            "judge": s.judgment.verdict if s.judgment else None,
-        }
-        for s in rows
-    ]
+def snapshot_json(session: Session, statuses: dict[str, Status], at: datetime | None = None) -> dict:
+    rows = sorted(statuses.values(), key=lambda s: s.sort_key())
+    now = at or datetime.now(timezone.utc)
+    return {
+        "session": session.ref.session_id,
+        "lane": session.lane(),
+        "as_of": now.astimezone().isoformat(),
+        "agents": [
+            {
+                "id": s.agent.id,
+                "description": s.agent.description,
+                "state": s.state,
+                "severity": s.severity,
+                "flags": [{"code": f.code, "severity": f.severity, "detail": f.detail} for f in s.flags],
+                "quiet_s": round(s.age_s),
+                "judge": {"verdict": s.judgment.verdict, "dismissed": s.dismissed} if s.judgment else None,
+            }
+            for s in rows
+        ],
+    }
 
 
-def print_snapshot(
-    session: Session,
-    at: datetime | None,
-    th: Thresholds,
-    judge: Judge | None = None,
-    prober=None,
-    as_json: bool = False,
-) -> int:
+def print_snapshot(session: Session, at: datetime | None, th: Thresholds, judge: Judge | None = None, prober=None, as_json: bool = False) -> int:
     session.refresh()
     probes = {}
     if at is None:
@@ -143,7 +146,7 @@ def print_snapshot(
         probes = (prober or Prober()).probe(wts)
     statuses, _ = assess_all(session, at, probes, th, judge)
     if as_json:
-        print(json.dumps(snapshot_json(statuses), indent=2))
+        print(json.dumps(snapshot_json(session, statuses, at), indent=2))
         return 0
     rows = sorted(statuses.values(), key=lambda s: s.sort_key())
     when = (at or datetime.now(timezone.utc)).astimezone().strftime("%Y-%m-%d %H:%M")
