@@ -9,7 +9,7 @@ merge.
 [![tests](https://github.com/phalladar/tracon/actions/workflows/test.yml/badge.svg)](https://github.com/phalladar/tracon/actions/workflows/test.yml)
 [![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-![A terminal split in two. On the left, a Claude Code session is asked to /expedite checkout-v2 and dispatches seven worktree agents. On the right, tracon lists them as they start; over the run one agent is blocked on a permission prompt, one goes idle, one drifts off its brief and one is stuck retrying a failing command. The user selects the stuck agent in tracon, presses m and sends the drafted note; it arrives in the Claude Code session, the lead messages the agent, and tracon shows it back on track.](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/hero.gif)
+![A terminal split in two. On the left, a Claude Code session is asked to /expedite checkout-v2 and dispatches seven worktree agents. On the right, tracon lists them as they start; over the run one agent is blocked on a permission prompt, one goes idle, one drifts off its brief and one is stuck retrying a failing command. The user selects the stuck agent in tracon, presses m to nudge the lead with a drafted note; it arrives in the Claude Code session, the lead messages the agent, and tracon shows it back on track.](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/hero.gif)
 
 <sub>Left: a Claude Code session orchestrating seven worktree agents. Right: tracon in a split next to it.
 A made-up run from <code>tracon --demo</code>, sped up.</sub>
@@ -65,13 +65,11 @@ time.
 
 ![tracon's files heatmap: rows of files, one column per agent, with two agents both editing shop/cart.py marked with an exclamation mark](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/tui-files.png)
 
-### A note to the lead, drafted for you
+### Nudge the lead in one key
 
-`m` drafts a message to your orchestrating session: the agent's state, flags, the judge's
-concern and what to do. Edit it, then send it with `ctrl+s` (see
-[Messaging the lead](#messaging-the-lead)).
-
-![tracon's message dialog with a drafted note about an agent stuck retrying the same failing command](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/tui-message-lead.png)
+`m` nudges your orchestrating session about the selected agent: tracon drafts a note with
+the agent's state, flags, the judge's concern and what to do, and sends it straight away (see
+[Nudging the lead](#nudging-the-lead)).
 
 ### Replay the whole run
 
@@ -127,7 +125,7 @@ A good layout: your orchestrating session on one side, `tracon` in a split next 
 | `x` | files heatmap: which agents edited which files, concurrent edits marked `!` |
 | `w` | open the browser view |
 | `j` | ask the judge about the selected agent now |
-| `m` | message the lead about the selected agent: a note with its state, flags and what to do, which you can edit before sending (live only) |
+| `m` | nudge the lead about the selected agent: sends a note with its state, flags and what to do (live only) |
 | `[` `]` / `{` `}` | rewind / forward 5 / 30 min (enters replay) · `space` play · `l` back to live |
 | `o` / `c` | open the agent's worktree in a new Ghostty window / copy its path |
 | `h` / `s` / `q` | hide finished agents / next session / quit |
@@ -244,19 +242,19 @@ See [Judge verdicts](#judge-verdicts) for what each one means.
 
 Judgments are cached in `~/.cache/tracon/judgments.json`, so replays and restarts show them.
 
-## Messaging the lead
+## Nudging the lead
 
 Most of the "What to do" advice above is "have the lead…". Press `m` on an agent (in the table
-or its detail) and tracon drafts that note for you: the agent's id, state, flags, the judge's
-concern, and the matching advice, phrased for the lead's own tools (`SendMessage`, `TaskStop`).
-Edit it, then `ctrl+s` to send or `esc` to cancel.
+or its detail) and tracon nudges the lead with that note: the agent's id, state, flags, the
+judge's concern, and the matching advice, phrased for the lead's own tools (`SendMessage`,
+`TaskStop`). It is sent as soon as you press the key; a notification confirms it.
 
 It is delivered through Claude Code's cross-session inbox: tracon finds the lead's process in
 `~/.claude/sessions/` and writes one message to the Unix socket listed there. The lead sees it
 as a message from another session, between tool calls or as a new turn if it is idle, and it
 can't approve permission prompts. If the lead's `crossSessionInbound` setting is `hold` (or
 its permission mode makes Claude Code review peer messages), the message waits for you to
-approve it in that session. If the lead isn't running, `ctrl+s` copies the note to the
+approve it in that session. If the lead isn't running, `m` copies the note to the
 clipboard instead. tracon never reads the inbox auth keys; the socket accepts unauthenticated
 messages from your own user on macOS and Linux.
 
@@ -304,7 +302,7 @@ tracon/
   signals.py     one agent -> state + flags (pure, testable)
   lane.py        whole-run view: file collisions, judge results, assess_all()
   judge.py       the optional LLM check, its scheduling, budget and cache
-  advice.py      the note `m` drafts for the lead
+  advice.py      the nudge `m` sends the lead
   demo.py        the made-up run behind `--demo`
   inbox.py       find a live session's inbox socket and send to it
   app.py         Textual TUI

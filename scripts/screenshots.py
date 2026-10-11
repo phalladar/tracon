@@ -85,11 +85,6 @@ async def tui(demo: Demo) -> list[str]:
         await pilot.pause(1)
         shoot(app, "tui-timeline")
         await pilot.press("escape")
-        select("a5e93b04")
-        await pilot.press("m")
-        await pilot.pause(1)
-        shoot(app, "tui-message-lead")
-        await pilot.press("escape")
 
     app = app_for(demo)
     async with app.run_test(size=(110, 26)) as pilot:

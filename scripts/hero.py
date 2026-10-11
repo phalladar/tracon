@@ -309,7 +309,7 @@ async def record(tmp: str) -> list[tuple[str, int]]:
         lead.busy = None
         await shot(1400)
 
-        # 3. You pick the stuck agent in tracon and press m.
+        # 3. You pick the stuck agent in tracon and press m to nudge the lead.
         title = "◎ checkout-v2 sprint"
         target = app._order.index(a16)
         while table.cursor_row < target:
@@ -317,11 +317,8 @@ async def record(tmp: str) -> list[tuple[str, int]]:
             await shot(260, title)
         await shot(900, title)
         await pilot.press("m")
-        await pilot.pause(0.3)
-        await shot(3200, title)
-        await pilot.press("ctrl+s")
         await pilot.pause(0.4)
-        await shot(1200, title)
+        await shot(2400, title)  # the "nudged the lead" toast
 
         # 4. The note lands in the lead, which nudges the agent.
         note = SENT[-1] if SENT else ""
