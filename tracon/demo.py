@@ -221,12 +221,22 @@ class Demo:
         w.text(ago(31), "Done: orders table, model, 9 tests. Committed.", final=True)
 
         w = self.w["a1c7d93e"]  # steady and on track
-        steady(w, now, 89, 0.6, ["payments/webhooks.py", "payments/signing.py", "tests/test_webhooks.py"], "uv run pytest tests/test_webhooks.py -q", step=1.9)
+        files = ["payments/webhooks.py", "payments/signing.py", "tests/test_webhooks.py"]
+        steady(w, now, 89, 46, files, "uv run pytest tests/test_webhooks.py -q", step=1.9)
+        w.text(ago(45.8), "Webhook endpoint is in and replays are rejected by event id. Next: verify the HMAC "
+               "signature before parsing the body, with tests for a bad signature and a stale timestamp.")
+        steady(w, now, 45.5, 0.6, files, "uv run pytest tests/test_webhooks.py -q", step=1.9)
         w.edit(ago(0.2), "payments/webhooks.py")
 
         w = self.w["a2b84f61"]  # drifts into the admin pages; big context; collides with #14
         w.ctx, w.ctx_step = 60_000, 6_000
-        steady(w, now, 84, 30, ["shop/cart.py", "shop/pricing.py", "tests/test_pricing.py"], "uv run pytest tests/test_pricing.py -q", step=1.5)
+        files = ["shop/cart.py", "shop/pricing.py", "tests/test_pricing.py"]
+        steady(w, now, 84, 58, files, "uv run pytest tests/test_pricing.py -q", step=1.5)
+        w.text(ago(57.8), "Subtotal and tax now come from `shop/pricing.py`; `cart.py` just calls it. "
+               "Next: discounts and the rounding edge cases.")
+        steady(w, now, 57.5, 30, files, "uv run pytest tests/test_pricing.py -q", step=1.5)
+        w.text(ago(29.6), "Pricing tests pass (14). Checking the totals on the admin dashboard, the order table "
+               "misaligns on narrow screens.\n\nI'll tidy the dashboard layout while I'm in here.")
         steady(w, now, 29, 1, ["shop/admin/dashboard.py", "shop/admin/styles.css", "shop/cart.py"], "uv run pytest -q", step=1.4)
 
         w = self.w["a3d05e7a"]  # running the suite now

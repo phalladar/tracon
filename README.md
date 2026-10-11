@@ -54,7 +54,9 @@ agents drifting from their brief. Red needs you now; amber is worth a look.
 ### Why one is in trouble
 
 `enter` opens an agent: what it is doing, the judge's concern and how the verdict changed,
-every flag explained, the files it touched outside its brief, and its full activity feed.
+every flag explained, the files it touched outside its brief, and a live tail of what it said,
+in full. The tool calls between two messages fold into one line (`▸ 23 tool calls  Read 5 ·
+Edit 8 …`); click it to open that run, or press `e` to open them all.
 
 ![tracon's detail view of an agent the judge marks as drifting: it has edited admin files its brief says to leave alone](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/tui-detail.png)
 
@@ -120,7 +122,8 @@ A good layout: your orchestrating session on one side, `tracon` in a split next 
 
 | Key | |
 |---|---|
-| `enter` | agent detail: state, judge verdict, flags, files, live processes, full activity feed with the lead's messages |
+| `enter` | agent detail: state, judge verdict, flags, files, live processes, and what the agent said, with the lead's messages and its tool calls folded between them (`e` or a click unfolds them) |
+| `e` | open or fold every run of tool calls, in the pane under the table and in the detail (a click on `▸` does one) |
 | `t` | timeline: every agent across the run, coloured by activity, with the lead's merges and messages |
 | `x` | files heatmap: which agents edited which files, concurrent edits marked `!` |
 | `w` | open the browser view |

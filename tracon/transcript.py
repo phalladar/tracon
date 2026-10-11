@@ -40,6 +40,7 @@ REFUSED_MARKERS = (
     "<tool_use_error>Blocked:",
 )
 ERROR_TEXT_MAX = 1500  # failed results keep this much text; `summary` is only a feed line
+SAID_TEXT_MAX = 6000  # the agent's own words keep this much, line breaks intact, for the detail feed
 
 MERGE_BASE_RE = re.compile(r"\bgit\s+(merge|rebase|pull|reset)\b[^\n;&|]*\b(master|main)\b")
 COMMIT_RE = re.compile(r"\bgit\s+commit\b")
@@ -181,7 +182,10 @@ class Transcript:
             if bt == "tool_use":
                 self.events.append(_tool_use_event(ts, b, self.cwd))
             elif bt == "text" and b.get("text", "").strip():
-                self.events.append(Event(ts, "text", summary=_one_line(b["text"]), final=final))
+                said = b["text"].strip()
+                if len(said) > SAID_TEXT_MAX:
+                    said = said[: SAID_TEXT_MAX - 1] + "…"
+                self.events.append(Event(ts, "text", summary=_one_line(said), text=said, final=final))
 
     def _user(self, ts: datetime, content) -> None:
         if isinstance(content, str):

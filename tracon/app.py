@@ -6,16 +6,19 @@ import os
 import re
 import subprocess
 import webbrowser
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
+from rich.style import Style
+from rich.table import Table
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, RichLog, Static
+from textual.widgets import DataTable, Footer, Static
 
 from . import inbox
 from .advice import compose
@@ -42,7 +45,8 @@ NOTIFY_FLAGS = {"DRIFT", "STUCK", "COLLIDE"}  # notify on these even though they
 CTX_SCALE = 500_000
 LEAD_ID = "__lead__"
 CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
-FEED_LINES = 600
+FEED_BLOCKS = 400
+PREVIEW_BLOCKS = 60
 
 
 def tool_kind(tool: str) -> str:
@@ -102,51 +106,126 @@ def verdict_text(st: Status, judge: Judge | None) -> Text:
     return Text(label, style="grey50" if st.finished else color)
 
 
-def event_line(e: Event) -> Text | None:
-    t = Text(local(e.ts) + " ", style="grey50")
-    if e.kind == "tool_use":
-        if e.tool in HANDBACK_TOOLS:
-            t.append("✓ REPORT ", style="bold green")
-            t.append(e.summary)
-            return t
-        t.append(f"{e.tool:<6} ", style=TOOL_STYLE[tool_kind(e.tool)])
-        t.append(e.summary)
-        if e.background:
-            t.append("  [background]", style="yellow")
-        return t
+@dataclass
+class ToolGroup:
+    """A run of tool calls between two things the agent or the lead said."""
+
+    key: int  # index of its first event in the transcript, so it stays put while the run grows
+    events: list[Event] = field(default_factory=list)
+
+    @property
+    def calls(self) -> list[Event]:
+        return [e for e in self.events if e.kind == "tool_use"]
+
+
+def detail_blocks(agent: Agent, session: Session, at: datetime | None) -> list[tuple[Event, bool] | ToolGroup]:
+    """An agent's feed: what it said in full, the lead's messages to it, and runs of tool calls
+    folded into a `ToolGroup`. A plain item is (event, from_lead)."""
+    return fold(agent.transcript.events, session.lead_messages(agent.id, at), at)
+
+
+def fold(events: list[Event], lead_msgs: list[Event], at: datetime | None) -> list[tuple[Event, bool] | ToolGroup]:
+    items = [(e.ts, i, e) for i, e in enumerate(iter_until(events, at))]
+    items += [(e.ts, -1, e) for e in lead_msgs]
+    out: list[tuple[Event, bool] | ToolGroup] = []
+    for _, i, e in sorted(items, key=lambda x: x[0]):
+        if i >= 0 and e.kind == "tool_result" and not e.is_error:
+            continue  # a result that went fine adds nothing to its call
+        if i >= 0 and (e.kind == "tool_result" or (e.kind == "tool_use" and e.tool not in HANDBACK_TOOLS)):
+            if not out or not isinstance(out[-1], ToolGroup):
+                out.append(ToolGroup(i))
+            out[-1].events.append(e)
+        else:
+            out.append((e, i < 0))
+    return out
+
+
+def _call_body(e: Event) -> Text:
+    """A tool call or a failed result, without its time."""
+    t = Text()
     if e.kind == "tool_result":
-        if not e.is_error:
-            return None
-        t.append("  ✗ ", style="red")
-        t.append(("denied: " if e.rejected else "") + e.summary[:160], style="red")
+        t.append(("denied: " if e.rejected else "refused: " if e.refused else "") + e.summary[:160], style="red")
         return t
-    if e.kind == "text":
-        t.append("  » " + e.summary, style="italic grey70")
-        return t
-    if e.kind == "coordinator":
-        t.append("◆ lead: ", style="bold magenta")
-        t.append(e.summary, style="magenta")
-        return t
-    if e.kind == "brief":
-        t.append("brief: ", style="bold")
-        t.append(e.summary, style="grey70")
-        return t
-    t.append(e.summary, style="red" if e.is_error else "grey50")
+    t.append(f"{e.tool:<6} ", style=TOOL_STYLE[tool_kind(e.tool)])
+    t.append(e.summary)
+    if e.background:
+        t.append("  [background]", style="yellow")
     return t
 
 
-def lead_line(e: Event) -> Text:
-    t = Text(local(e.ts) + " ", style="grey50")
-    t.append("◆ lead → ", style="bold magenta")
-    t.append((e.extra or {}).get("summary") or (e.extra or {}).get("message", "")[:140], style="magenta")
+def _group_summary(g: ToolGroup, click: Style) -> Text:
+    """'7 tool calls' (the click target), counts per tool, failures, and the latest call."""
+    calls = g.calls
+    t = Text()
+    t.append(f"{len(calls)} tool calls", style=Style(bold=True) + click)
+    t.append("  ")
+    counts: dict[str, int] = {}
+    for e in calls:
+        counts[e.tool] = counts.get(e.tool, 0) + 1
+    for i, (tool, n) in enumerate(counts.items()):
+        t.append(("· " if i else "") + f"{tool} {n} ", style=TOOL_STYLE[tool_kind(tool)])
+    failed = [e for e in g.events if e.kind == "tool_result"]
+    for word, n in (
+        ("denied", sum(e.rejected for e in failed)),
+        ("refused", sum(e.refused for e in failed)),
+        ("failed", sum(not (e.rejected or e.refused) for e in failed)),
+    ):
+        if n:
+            t.append(f"✗ {n} {word} ", style="red")
+    if calls:
+        t.append("· last: " + calls[-1].summary, style="grey58")
+    t.no_wrap, t.overflow = True, "ellipsis"
     return t
 
 
-def feed(agent: Agent, session: Session, at: datetime | None) -> list[Text]:
-    """The agent's own events, with the lead's messages to it merged in by time."""
-    items = [(e.ts, event_line(e)) for e in iter_until(agent.transcript.events, at)]
-    items += [(e.ts, lead_line(e)) for e in session.lead_messages(agent.id, at)]
-    return [line for _, line in sorted(items, key=lambda x: x[0]) if line is not None]
+def render_detail(blocks: list[tuple[Event, bool] | ToolGroup], owner: str, is_open) -> Table:
+    """Time, a marker, then the body, so wrapped lines hang under the body. A group of two or more
+    calls is one line whose ▸ and count run `app.toggle_tools(owner, key)` when clicked."""
+    grid = Table.grid(padding=(0, 1), expand=True)
+    grid.add_column(no_wrap=True, style="grey50")
+    grid.add_column(no_wrap=True)
+    grid.add_column(ratio=1)
+
+    def calls(events: list[Event], indent: str) -> None:
+        for e in events:
+            failed = e.kind == "tool_result"
+            mark = Text("✗", style="red") if failed else Text("·", style="grey50")
+            grid.add_row(local(e.ts), mark, Text(indent) + _call_body(e))
+
+    for b in blocks:
+        if isinstance(b, ToolGroup):
+            if len(b.calls) < 2:
+                calls(b.events, "")
+                continue
+            opened = is_open(owner, b.key)
+            click = Style(meta={"@click": f"app.toggle_tools({owner!r}, {b.key})"})
+            arrow = Text("▾" if opened else "▸", style=Style(color="cyan", bold=True) + click)
+            grid.add_row(local(b.events[0].ts), arrow, _group_summary(b, click))
+            if opened:
+                calls(b.events, "  ")
+            continue
+        e, from_lead = b
+        if from_lead:
+            x = e.extra or {}
+            body = Text(x["summary"] + "\n" if x.get("summary") else "", style="bold magenta")
+            body.append(_clip(x.get("message", ""), 2000), style="magenta")
+            grid.add_row(local(e.ts), Text("◆", style="bold magenta"), body)
+        elif e.kind == "text":
+            grid.add_row(local(e.ts), Text("»", style="bold"), Text(e.text or e.summary))
+        elif e.kind == "tool_use":  # a handback, kept out of the groups
+            grid.add_row(local(e.ts), Text("✓", style="bold green"), Text.assemble(("REPORT ", "bold green"), e.summary))
+        elif e.kind == "coordinator":
+            grid.add_row(local(e.ts), Text("◆", style="bold magenta"), Text.assemble(("lead: ", "bold magenta"), (e.summary, "magenta")))
+        elif e.kind == "brief":
+            grid.add_row(local(e.ts), Text(""), Text.assemble(("brief: ", "bold"), (e.summary, "grey70")))
+        else:
+            grid.add_row(local(e.ts), Text(""), Text(e.summary, style="red" if e.is_error else "grey50"))
+    return grid
+
+
+def _clip(s: str, n: int) -> str:
+    s = s.strip()
+    return s if len(s) <= n else s[: n - 1] + "…"
 
 
 def notify(title: str, body: str) -> None:
@@ -167,6 +246,7 @@ class DetailScreen(Screen):
     BINDINGS = [
         Binding("escape,q", "app.pop_screen", "Back"),
         Binding("b", "toggle_brief", "Brief"),
+        Binding("e", "app.toggle_tools", "Expand tools"),
         Binding("o", "app.open_worktree", "Open in Ghostty"),
         Binding("c", "app.copy_path", "Copy path"),
         Binding("n", "app.nudge_lead", "Nudge lead"),
@@ -204,11 +284,12 @@ class DetailScreen(Screen):
         # A Static reflows on resize, unlike RichLog lines, which keep the width they were written at.
         scroller = self.query_one("#detail-feed", VerticalScroll)
         at_end = scroller.scroll_y >= scroller.max_scroll_y - 1
-        lines = feed(agent, app.session, app.at)[-FEED_LINES:]
-        self.query_one("#detail-feed-text", Static).update(Text("\n").join(lines))
-        if at_end and len(lines) != self._fed:
+        blocks = detail_blocks(agent, app.session, app.at)[-FEED_BLOCKS:]
+        self.query_one("#detail-feed-text", Static).update(render_detail(blocks, self.agent_id, app.tools_open))
+        size = sum(len(b.events) if isinstance(b, ToolGroup) else 1 for b in blocks)
+        if at_end and size != self._fed:
             self.call_after_refresh(scroller.scroll_end, animate=False)
-        self._fed = len(lines)
+        self._fed = size
 
     def _head(self, agent: Agent, st: Status, app: "LaneApp") -> Text:
         t = Text()
@@ -457,12 +538,14 @@ class LaneApp(App):
     #agents > .datatable--cursor { background: $primary 15%; text-style: none; }
     #agents:focus > .datatable--cursor { background: $primary 28%; color: $foreground; text-style: none; }
     #preview { height: 12; border-top: solid $primary-darken-2; padding: 0 1; }
+    #preview-text { width: 1fr; }
     #detail-top { height: auto; max-height: 50%; padding: 0 1; border-bottom: solid $primary-darken-2; }
     #detail-feed { height: 1fr; padding: 0 1; }
     """
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("enter", "detail", "Detail", show=True),
+        Binding("e", "toggle_tools", "Expand tools"),
         Binding("t", "timeline", "Timeline"),
         Binding("x", "files", "Files"),
         Binding("w", "web", "Web"),
@@ -512,11 +595,15 @@ class LaneApp(App):
         self._order: list[str] = []
         self._marked: str | None = None
         self._seen: dict[str, tuple[str, frozenset]] | None = None
+        self.tools_all = False  # `e`: every run of tool calls open
+        self.tools_toggled: set[tuple[str, int]] = set()  # runs clicked open (or shut, under tools_all)
+        self._previewed: tuple[str | None, int] = (None, 0)
 
     def compose(self) -> ComposeResult:
         yield Static(id="header")
         yield DataTable(id="agents", cursor_type="row", zebra_stripes=False, cursor_foreground_priority="renderable")
-        yield RichLog(id="preview", wrap=False, markup=False, max_lines=200)
+        with VerticalScroll(id="preview"):
+            yield Static(id="preview-text")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -763,19 +850,41 @@ class LaneApp(App):
         return st.detail
 
     def render_preview(self) -> None:
-        log = self.query_one("#preview", RichLog)
-        log.clear()
+        """The selected row's feed, folded like the detail's, following its tail."""
+        scroller = self.query_one("#preview", VerticalScroll)
+        text = self.query_one("#preview-text", Static)
         aid = self.selected_id()
-        if aid == LEAD_ID:
-            lines = [event_line(e) for e in iter_until(self.session.lead.events, self.at)]
-            for line in [x for x in lines if x is not None][-10:]:
-                log.write(line)
-            return
         agent = self.session.agents.get(aid) if aid else None
-        if not agent:
+        if aid == LEAD_ID:
+            blocks = fold(self.session.lead.events, [], self.at)
+        elif agent:
+            blocks = detail_blocks(agent, self.session, self.at)
+        else:
+            text.update("")
             return
-        for line in feed(agent, self.session, self.at)[-10:]:
-            log.write(line)
+        blocks = blocks[-PREVIEW_BLOCKS:]
+        size = sum(len(b.events) if isinstance(b, ToolGroup) else 1 for b in blocks)
+        follow = self._previewed[0] != aid or (
+            scroller.scroll_y >= scroller.max_scroll_y - 1 and self._previewed[1] != size
+        )
+        text.update(render_detail(blocks, aid, self.tools_open))
+        if follow:
+            self.call_after_refresh(scroller.scroll_end, animate=False)
+        self._previewed = (aid, size)
+
+    def tools_open(self, owner: str, key: int) -> bool:
+        return ((owner, key) in self.tools_toggled) != self.tools_all
+
+    def action_toggle_tools(self, owner: str | None = None, key: int | None = None) -> None:
+        """Open or shut one run of tool calls (a click), or all of them (`e`)."""
+        if owner is None or key is None:
+            self.tools_all = not self.tools_all
+            self.tools_toggled.clear()
+        else:
+            self.tools_toggled ^= {(owner, key)}
+        self.render_preview()
+        if isinstance(self.screen, DetailScreen):
+            self.screen.refresh_view()
 
     def selected_id(self) -> str | None:
         table = self.query_one(DataTable)
