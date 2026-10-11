@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -14,7 +15,7 @@ from .judge import DEFAULT_MODEL, Judge
 from .lane import assess_all
 from .probe import Prober
 from .session import Chooser, Session, find_sessions
-from .signals import Thresholds, fmt_duration
+from .signals import Status, Thresholds, fmt_duration
 
 
 def parse_at(s: str) -> datetime:
@@ -39,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--at", help="replay as of this local time, e.g. '2026-10-11 01:30' or '01:30'")
     p.add_argument("--list", action="store_true", help="list recent sessions that have subagents")
     p.add_argument("--once", action="store_true", help="print one snapshot and exit (no TUI)")
+    p.add_argument("--json", action="store_true", help="output snapshot as JSON (with --once)")
     # Off by default: they're sent through osascript, so macOS shows them as coming from Script Editor.
     p.add_argument("--notify", action="store_true", help="desktop notifications when an agent needs you (off by default)")
     p.add_argument("--no-notify", action="store_true", help=argparse.SUPPRESS)
@@ -57,7 +59,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.json and not args.once:
+        parser.error("--json needs --once")
     demo = chooser = None
     if args.demo:
         from .demo import Demo
@@ -87,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
     elif not args.no_judge:
         judge = Judge(model=args.judge_model, backend=args.judge_backend, budget_usd=args.judge_budget, min_interval_s=args.judge_every * 60)
     if args.once:
-        return print_snapshot(Session(refs[0]), at, th, judge, demo.prober if demo else None)
+        return print_snapshot(Session(refs[0]), at, th, judge, demo.prober if demo else None, as_json=args.json)
     if args.command == "web":
         import webbrowser
 
@@ -120,13 +125,38 @@ def _write(seq: str) -> None:
     sys.stdout.flush()
 
 
-def print_snapshot(session: Session, at: datetime | None, th: Thresholds, judge: Judge | None = None, prober=None) -> int:
+def snapshot_json(session: Session, statuses: dict[str, Status], at: datetime | None = None) -> dict:
+    rows = sorted(statuses.values(), key=lambda s: s.sort_key())
+    now = at or datetime.now(timezone.utc)
+    return {
+        "session": session.ref.session_id,
+        "lane": session.lane(),
+        "as_of": now.astimezone().isoformat(),
+        "agents": [
+            {
+                "id": s.agent.id,
+                "description": s.agent.description,
+                "state": s.state,
+                "severity": s.severity,
+                "flags": [{"code": f.code, "severity": f.severity, "detail": f.detail} for f in s.flags],
+                "quiet_s": round(s.age_s),
+                "judge": {"verdict": s.judgment.verdict, "dismissed": s.dismissed} if s.judgment else None,
+            }
+            for s in rows
+        ],
+    }
+
+
+def print_snapshot(session: Session, at: datetime | None, th: Thresholds, judge: Judge | None = None, prober=None, as_json: bool = False) -> int:
     session.refresh()
     probes = {}
     if at is None:
         wts = [a.worktree for a in session.agents.values() if a.worktree]
         probes = (prober or Prober()).probe(wts)
     statuses, _ = assess_all(session, at, probes, th, judge)
+    if as_json:
+        print(json.dumps(snapshot_json(session, statuses, at), indent=2))
+        return 0
     rows = sorted(statuses.values(), key=lambda s: s.sort_key())
     when = (at or datetime.now(timezone.utc)).astimezone().strftime("%Y-%m-%d %H:%M")
     print(f"lane: {session.lane() or '?'}   session {session.ref.session_id[:8]}   as of {when}\n")

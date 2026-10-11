@@ -9,6 +9,7 @@ web page. Python 3.12+, managed with uv.
 ```sh
 uv run pytest                                   # all tests; fast, offline, no Claude Code needed
 uv run tracon --once --no-judge                 # snapshot of the newest session, no TUI
+uv run tracon --once --json --no-judge          # snapshot as JSON (for status bars / scripts)
 uv run tracon --once --no-judge --at "HH:MM"    # replay a moment (needs a real session)
 uv run tracon web --no-judge                    # browser view only
 uv run tracon --demo                            # made-up run; no session needed

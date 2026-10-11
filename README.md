@@ -113,6 +113,7 @@ tracon --list                 # recent sessions that spawned subagents
 tracon -s 4f2a                # pick a session by id prefix
 tracon --at "2026-10-11 07:20"   # replay a session as it stood at that time
 tracon --once                 # print one snapshot and exit
+tracon --once --json          # snapshot as JSON (for scripts and status bars)
 ```
 
 A good layout: your orchestrating session on one side, `tracon` in a split next to it
@@ -313,6 +314,8 @@ messages from your own user on macOS and Linux.
 | `--project PATH` | current dir | which project's sessions to watch (its parent folders too, without this) |
 | `--session ID` | next split, else newest | session id or prefix |
 | `--at TIME` | live | replay as of a local time (`07:20` or `2026-10-11 07:20`) |
+| `--once` | | print one snapshot and exit (no TUI) |
+| `--json` | | output snapshot as JSON (for scripts and status bars) |
 | `--idle MIN` | 5 | silence before IDLE |
 | `--stall MIN` | 20 | running without change before STALLED |
 | `--notify` | off | desktop notifications when an agent needs you (`osascript` on macOS, `notify-send` on Linux) |
