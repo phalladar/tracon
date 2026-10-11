@@ -33,7 +33,8 @@ def test_owner_walks_up_to_claude_a_terminal_or_init():
 
 def test_the_live_probe_sees_a_child_process_and_its_cwd(tmp_path):
     """Exercises the real lsof (macOS) or /proc (Linux) and ps calls."""
-    child = subprocess.Popen([sys.executable, "-c", "print('up', flush=True); import time; time.sleep(30)"],
+    pad = "x" * 200  # long enough that a width-limited ps would cut the command line
+    child = subprocess.Popen([sys.executable, "-c", f"print('up', flush=True); import time; time.sleep(30)  # {pad}"],
                              cwd=tmp_path, stdout=subprocess.PIPE, text=True)
     try:
         child.stdout.readline()  # past exec, so ps sees its full command line
@@ -43,7 +44,7 @@ def test_the_live_probe_sees_a_child_process_and_its_cwd(tmp_path):
         ppid, etime, cmd = table[child.pid]
         assert ppid == os.getpid()
         assert ":" in etime
-        assert "time.sleep(30)" in cmd
+        assert cmd.endswith(pad)
     finally:
         child.kill()
         child.wait()

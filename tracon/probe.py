@@ -141,7 +141,7 @@ class Prober:
 
     @staticmethod
     def _process_table() -> dict[int, tuple[int, str, str]]:
-        out = _run(["ps", "-axo", "pid=,ppid=,etime=,command="])
+        out = _run(["ps", "-axww", "-o", "pid=,ppid=,etime=,command="])  # ww: procps cuts commands at 80 columns otherwise
         table = {}
         for line in out.splitlines():
             parts = line.split(None, 3)
