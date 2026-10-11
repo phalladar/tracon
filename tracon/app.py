@@ -7,6 +7,7 @@ import re
 import subprocess
 import webbrowser
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 from rich.text import Text
 from textual import work
@@ -221,7 +222,7 @@ class DetailScreen(Screen):
         t.append_text(ctx_bar(st.ctx, app.th))
         t.append("\n")
         if agent.worktree:
-            t.append(f"worktree {agent.worktree}\n", style="grey58")
+            t.append(f"worktree {short_path(agent.worktree)}\n", style="grey58")
         p = st.probe
         if p:
             if not p.exists:
@@ -850,7 +851,7 @@ class LaneApp(App):
             from .web import serve
 
             self.web_url = serve(self.session.ref, self.th, self.judge, port=self.web_port, probes=lambda: dict(self.probes))
-        webbrowser.open(self.web_url + (f"?at={self.at.isoformat()}" if self.at else ""))
+        webbrowser.open(self.web_url + (f"?at={quote(self.at.isoformat())}" if self.at else ""))
         self.notify(f"web view at {self.web_url}", timeout=4)
 
     def action_toggle_done(self) -> None:

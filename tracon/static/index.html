@@ -290,9 +290,9 @@ function renderHeader() {
   const sc = $("scrub");
   if (d.span) {
     sc.min = d.span[0]; sc.max = d.span[1];
-    if (!S.at) sc.value = d.span[1];
+    sc.value = S.at ? +S.at : d.span[1];
   }
-  $("when").textContent = hm(S.at || d.now);
+  $("when").textContent = hm(S.at ? +S.at : d.now);
 }
 
 // ---------------------------------------------------------------- timeline

@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 from .judge import DEFAULT_MODEL, Judge
 from .lane import assess_all
@@ -75,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
 
         from .web import serve, standalone_probes
 
-        url_at = f"?at={at.isoformat()}" if at else ""
+        url_at = f"?at={quote(at.isoformat())}" if at else ""
         # Standalone web view shows judgments a running TUI makes; it does not judge by itself.
         probes = standalone_probes(refs[0])
         import threading
