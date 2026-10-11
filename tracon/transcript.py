@@ -329,3 +329,38 @@ def iter_until(events: list[Event], now: datetime | None) -> Iterator[Event]:
         if now is not None and e.ts > now:
             return
         yield e
+
+
+TITLE_TAIL = 256 * 1024
+TITLE_RECORD_RE = re.compile(rb'^.*"type":\s*"(?:ai-title|agent-name)".*$', re.M)
+
+
+def read_title(path: str) -> str:
+    """The session's name as Claude Code shows it in the terminal tab (the /rename name, else the
+    generated title), without parsing the whole transcript. Claude Code re-appends its title records
+    as a group, so they are read from the end, in growing chunks until some turn up."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            span = TITLE_TAIL
+            while True:
+                start = max(0, size - span)
+                f.seek(start)
+                data = f.read(size - start)
+                if start:
+                    data = data[data.find(b"\n") + 1 :]  # drop the cut-off first line
+                name = title = ""
+                for line in TITLE_RECORD_RE.findall(data):
+                    try:
+                        rec = json.loads(line)
+                    except ValueError:
+                        continue
+                    if rec.get("type") == "agent-name" and rec.get("agentName"):
+                        name = rec["agentName"]
+                    elif rec.get("type") == "ai-title" and rec.get("aiTitle"):
+                        title = rec["aiTitle"]
+                if name or title or not start:
+                    return name or title
+                span *= 4
+    except OSError:
+        return ""

@@ -26,22 +26,43 @@ class Inbox:
     status: str = ""  # idle | busy | ...
 
 
-def find_inbox(session_id: str, root: str = SESSIONS_DIR) -> Inbox | None:
-    """The live process holding `session_id` open, or None if it isn't running."""
-    best: tuple[int, Inbox] | None = None
+@dataclass
+class Live:
+    """A running Claude Code process, as it registers itself."""
+
+    pid: int
+    session_id: str
+    cwd: str
+    interactive: bool  # in a terminal, as opposed to a background session
+    socket: str = ""
+    name: str = ""
+    status: str = ""
+    updated: int = 0
+
+
+def live_sessions(root: str = SESSIONS_DIR) -> list[Live]:
+    """Claude Code processes that are still running, most recently updated first."""
+    out = []
     for f in Path(root).glob("*.json"):
         try:
             d = json.loads(f.read_text())
         except (OSError, ValueError):
             continue
-        sock = d.get("messagingSocketPath") or ""
-        if d.get("sessionId") != session_id or not sock or not os.path.exists(sock) or not _alive(d.get("pid")):
+        if not isinstance(d, dict) or not d.get("sessionId") or not _alive(d.get("pid")):
             continue
-        ib = Inbox(int(d["pid"]), sock, d.get("name") or "", d.get("status") or "")
-        updated = int(d.get("updatedAt") or 0)
-        if best is None or updated > best[0]:
-            best = (updated, ib)
-    return best[1] if best else None
+        out.append(Live(
+            int(d["pid"]), d["sessionId"], d.get("cwd") or "", d.get("kind", "interactive") == "interactive",
+            d.get("messagingSocketPath") or "", d.get("name") or "", d.get("status") or "", int(d.get("updatedAt") or 0),
+        ))
+    return sorted(out, key=lambda lv: lv.updated, reverse=True)
+
+
+def find_inbox(session_id: str, root: str = SESSIONS_DIR) -> Inbox | None:
+    """The live process holding `session_id` open, or None if it isn't running."""
+    for lv in live_sessions(root):
+        if lv.session_id == session_id and lv.socket and os.path.exists(lv.socket):
+            return Inbox(lv.pid, lv.socket, lv.name, lv.status)
+    return None
 
 
 def _alive(pid) -> bool:
