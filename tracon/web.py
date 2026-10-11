@@ -1,7 +1,7 @@
 """Local web view: a zoomable lane timeline, file heatmap and agent drawer in the browser.
 
 Binds to 127.0.0.1 only. Endpoints:
-  GET /                    the page (lanectl/static/index.html)
+  GET /                    the page (tracon/static/index.html)
   GET /api/state?at=ISO    lane snapshot: agents, activity segments, lead marks, file matrix
   GET /api/agent/<id>?at=  one agent's activity feed
 """
@@ -232,7 +232,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, b"bad at", "text/plain")
         try:
             if url.path in ("/", "/index.html"):
-                body = resources.files("lanectl").joinpath("static/index.html").read_bytes()
+                body = resources.files("tracon").joinpath("static/index.html").read_bytes()
                 return self._send(200, body, "text/html; charset=utf-8")
             if url.path == "/api/state":
                 return self._send(200, json.dumps(self.state.snapshot(at)).encode(), "application/json")
@@ -266,7 +266,7 @@ def serve(
         raise RuntimeError(f"no free port in {port}-{port + 19}")
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     if block:
-        print(f"lanectl web: {url}  (ctrl-c to stop)")
+        print(f"tracon web: {url}  (ctrl-c to stop)")
         try:
             server.serve_forever()
         except KeyboardInterrupt:
@@ -277,7 +277,7 @@ def serve(
 
 
 def standalone_probes(session_ref: SessionRef) -> Callable[[], dict[str, WorktreeProbe]]:
-    """For `lanectl web` without the TUI: probe worktrees every 5 s in the background."""
+    """For `tracon web` without the TUI: probe worktrees every 5 s in the background."""
     session = Session(session_ref)
     prober = Prober()
     latest: dict[str, WorktreeProbe] = {}

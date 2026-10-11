@@ -1,13 +1,21 @@
-# lanectl
+# tracon
 
-**Mission control for Claude Code subagents.** When one Claude Code session orchestrates
-several subagents (a tech-lead skill dispatching cards to worktree agents, say), the status
-line tells you almost nothing. `lanectl` shows every agent at once: what it is doing, whether
-it is stuck, and whether it is still doing the job it was given. It runs in a terminal split
-next to your session, or in the browser.
+**Air traffic control for parallel Claude Code subagents.** A live terminal (and browser)
+monitor that flags stuck, blocked and drifting agents, and the worktree file conflicts
+headed for your merge.
+
+When one Claude Code session orchestrates several subagents (a tech-lead skill dispatching
+tasks to worktree agents, say), the status line tells you almost nothing. Like a
+[TRACON](https://en.wikipedia.org/wiki/Terminal_radar_approach_control_facilities) controller
+watching every aircraft on one scope, `tracon` shows every agent at once: what it is doing,
+whether it is holding, whether it has drifted off its brief, and whether two of them are on
+a collision course in the same file. Run it in a terminal split next to your session.
 
 It reads only what Claude Code already writes to disk. It never writes to your sessions or
 your repository.
+
+> tracon is an independent project. It is not affiliated with, endorsed by or sponsored by
+> Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
 
 ## What it catches
 
@@ -33,8 +41,8 @@ While it runs, a macOS notification fires when an agent needs you.
 Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```sh
-git clone <this repo> lanectl && cd lanectl
-uv tool install --editable .            # puts `lanectl` on your PATH
+git clone <this repo> tracon && cd tracon
+uv tool install --editable .            # puts `tracon` on your PATH
 # optional: judge through the Anthropic API instead of `claude -p`
 uv tool install --editable '.[api]'
 ```
@@ -42,15 +50,15 @@ uv tool install --editable '.[api]'
 ## Use
 
 ```sh
-cd your-project && lanectl     # newest session with subagents in this project (or anywhere)
-lanectl web                    # browser view only
-lanectl --list                 # recent sessions that spawned subagents
-lanectl -s 4f2a                # pick a session by id prefix
-lanectl --at "2026-10-11 07:20"   # replay a session as it stood at that time
-lanectl --once                 # print one snapshot and exit
+cd your-project && tracon     # newest session with subagents in this project (or anywhere)
+tracon web                    # browser view only
+tracon --list                 # recent sessions that spawned subagents
+tracon -s 4f2a                # pick a session by id prefix
+tracon --at "2026-10-11 07:20"   # replay a session as it stood at that time
+tracon --once                 # print one snapshot and exit
 ```
 
-A good layout: your orchestrating session on one side, `lanectl` in a split next to it
+A good layout: your orchestrating session on one side, `tracon` in a split next to it
 (in Ghostty, `cmd+d`).
 
 ### Terminal keys
@@ -68,7 +76,7 @@ A good layout: your orchestrating session on one side, `lanectl` in a split next
 
 ### Browser view
 
-`w` in the terminal, or `lanectl web`, serves a page on `127.0.0.1`:
+`w` in the terminal, or `tracon web`, serves a page on `127.0.0.1`:
 
 - **Timeline**: zoom with the scroll wheel, drag to pan, double-click to fit. Hover any bar
   for the calls it covers. Silent stretches past the idle threshold are drawn in orange.
@@ -78,7 +86,7 @@ A good layout: your orchestrating session on one side, `lanectl` in a split next
 
 ## The judge (optional, on by default)
 
-Rules catch mechanical failures. For drift, `lanectl` periodically asks a small model
+Rules catch mechanical failures. For drift, `tracon` periodically asks a small model
 (Claude Haiku 5.5) to read an agent's brief, the lead's messages to it, and its last 40
 actions, and answer `on_track`, `drifting`, `stuck` or `unclear` with a one-line summary.
 
@@ -93,7 +101,7 @@ actions, and answer `on_track`, `drifting`, `stuck` or `unclear` with a one-line
 - **Privacy:** checks send the brief and summaries of recent tool calls (commands, file
   paths, error text) to Anthropic, as your sessions already do. `--no-judge` turns it off.
 
-Judgments are cached in `~/.cache/lanectl/judgments.json`, so replays and restarts show them.
+Judgments are cached in `~/.cache/tracon/judgments.json`, so replays and restarts show them.
 
 ## Options
 
@@ -123,13 +131,13 @@ Claude Code writes, per session:
   <session>/subagents/agent-<id>.meta.json  description, model, worktree, branch
 ```
 
-`lanectl` tails these files incrementally. Every few seconds it also checks, per worktree,
+`tracon` tails these files incrementally. Every few seconds it also checks, per worktree,
 which processes are running there (`lsof` and `ps`, keeping only what Claude launched, plus
 orphans) and the git state (branch, commits ahead, dirty files). States and flags are derived
 from both.
 
 ```
-lanectl/
+tracon/
   transcript.py  JSONL -> compact events (all knowledge of the transcript format lives here)
   session.py     find sessions, track the lead and its agents
   probe.py       live processes and git state per worktree
@@ -155,7 +163,11 @@ lanectl/
 ```sh
 uv sync --group dev
 uv run pytest                      # synthetic transcripts; no Claude Code or network needed
-uv run lanectl --once --no-judge   # quick check against your latest session
+uv run tracon --once --no-judge   # quick check against your latest session
 ```
 
 See [CLAUDE.md](CLAUDE.md) for architecture notes and conventions.
+
+## License
+
+[MIT](LICENSE)

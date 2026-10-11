@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lane Control</title>
+<title>TRACON</title>
 <style>
 :root {
   color-scheme: light;
@@ -255,7 +255,7 @@ async function load() {
     render();
     if (S.selected) loadDrawer(S.selected);
   } catch (e) {
-    $("meta").textContent = "Lost connection to lanectl: " + e.message;
+    $("meta").textContent = "Lost connection to tracon: " + e.message;
   } finally {
     S.inflight = false;
   }
@@ -265,7 +265,7 @@ async function load() {
 function renderHeader() {
   const d = S.data;
   $("lane").textContent = d.lane || "Lane";
-  document.title = (d.lane ? d.lane + " · " : "") + "Lane Control";
+  document.title = (d.lane ? d.lane + " · " : "") + "TRACON";
   $("meta").textContent = `${d.project} · session ${d.session.slice(0, 8)}`;
   const mode = $("mode");
   mode.className = "badge " + (d.live ? "live" : "replay");

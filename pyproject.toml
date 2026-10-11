@@ -1,8 +1,11 @@
 [project]
-name = "lanectl"
+name = "tracon"
 version = "0.1.0"
-description = "Mission control for Claude Code subagents: see which are working, stuck or off track, live in the terminal or browser"
+description = "Air traffic control for parallel Claude Code subagents: live TUI flags stuck, blocked, drifting agents, file conflicts"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Josh Auriemma" }]
 requires-python = ">=3.12"
 dependencies = ["textual>=0.80"]
 keywords = ["claude-code", "agents", "subagents", "tui", "monitoring", "textual"]
@@ -18,7 +21,7 @@ classifiers = [
 api = ["anthropic"]
 
 [project.scripts]
-lanectl = "lanectl.cli:main"
+tracon = "tracon.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]

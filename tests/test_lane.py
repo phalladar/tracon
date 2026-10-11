@@ -4,12 +4,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from lanectl import judge as judge_mod
-from lanectl.judge import Judge, Judgment, build_prompt
-from lanectl.lane import assess_all, card_label, file_matrix
-from lanectl.session import Session, SessionRef
-from lanectl.web import LaneState
-from lanectl.signals import Thresholds
+from tracon import judge as judge_mod
+from tracon.judge import Judge, Judgment, build_prompt
+from tracon.lane import assess_all, card_label, file_matrix
+from tracon.session import Session, SessionRef
+from tracon.web import LaneState
+from tracon.signals import Thresholds
 
 T0 = datetime(2026, 10, 11, 12, 0, tzinfo=timezone.utc)
 ROOT = "/repo"
@@ -102,8 +102,8 @@ def test_reads_are_recorded_but_never_collide(lane):
 
 
 def test_card_label():
-    from lanectl.session import Agent
-    from lanectl.transcript import Transcript
+    from tracon.session import Agent
+    from tracon.transcript import Transcript
 
     assert card_label(Agent("x", {"description": "#749 Act III"}, Transcript("/nope"))) == "#749"
     assert card_label(Agent("x", {"description": "Fact sheet"}, Transcript("/nope"))) == "Fact"

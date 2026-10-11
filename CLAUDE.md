@@ -1,6 +1,6 @@
-# lanectl
+# tracon
 
-Read-only monitor for Claude Code subagents: tails session transcripts under
+Air traffic control for parallel Claude Code subagents. Read-only monitor for Claude Code subagents: tails session transcripts under
 `~/.claude/projects/`, probes worktrees, and shows state/flags in a Textual TUI and a local
 web page. Python 3.12+, managed with uv.
 
@@ -8,12 +8,12 @@ web page. Python 3.12+, managed with uv.
 
 ```sh
 uv run pytest                                   # all tests; fast, offline, no Claude Code needed
-uv run lanectl --once --no-judge                # snapshot of the newest session, no TUI
-uv run lanectl --once --no-judge --at "HH:MM"   # replay a moment (needs a real session)
-uv run lanectl web --no-judge                   # browser view only
+uv run tracon --once --no-judge                 # snapshot of the newest session, no TUI
+uv run tracon --once --no-judge --at "HH:MM"    # replay a moment (needs a real session)
+uv run tracon web --no-judge                    # browser view only
 ```
 
-`lanectl` on PATH is an editable `uv tool` install, so code changes apply immediately.
+`tracon` on PATH is an editable `uv tool` install, so code changes apply immediately.
 
 ## Architecture (data flows top to bottom)
 
@@ -31,7 +31,7 @@ uv run lanectl web --no-judge                   # browser view only
   facts (file collisions via `file_matrix`) and the judge's verdicts on top of `assess`.
 - `judge.py`: optional LLM check. Two backends: SDK (`api`, needs a key and the `[api]`
   extra) or `claude -p` (`cli`). Scheduling (`due`), budget, and an on-disk cache in
-  `~/.cache/lanectl/`. Failures are recorded on the `Judgment`, never raised.
+  `~/.cache/tracon/`. Failures are recorded on the `Judgment`, never raised.
 - `app.py`: TUI. `tick()` every 2 s, probes every 5 s and the judge every 10 s run in
   `@work(thread=True)` workers and hand results back with `call_from_thread`.
 - `web.py` + `static/index.html`: stdlib `ThreadingHTTPServer` on 127.0.0.1. `LaneState` owns
@@ -52,6 +52,8 @@ uv run lanectl web --no-judge                   # browser view only
 - Colours: activity kinds use categorical slots 1-3 (edit blue, shell orange, read aqua).
   Status uses the fixed good/warning/serious/critical set and always carries an icon or
   label. Don't reuse one family for the other.
+- Keep "Claude" and "Anthropic" out of names (package, command, UI titles); "for Claude Code"
+  in descriptive text is fine. Keep the not-affiliated note in the README.
 - Judge cost guardrails (budget, `min_new_calls`, `min_interval_s`, active agents only) stay
   on by default.
 
@@ -63,6 +65,6 @@ uv run lanectl web --no-judge                   # browser view only
 - Checking UI changes: drive the app with `App.run_test()` + `pilot`, `save_screenshot()` to
   SVG, then `qlmanage -t -s 1800 -o <dir> file.svg` to get a PNG. Headless Chrome screenshots
   of the web page work, but Chrome may not exit afterwards (the page polls), so kill it.
-- `claude -p` runs with `cwd=~/.cache/lanectl`, `--setting-sources ""` and
+- `claude -p` runs with `cwd=~/.cache/tracon`, `--setting-sources ""` and
   `--no-session-persistence`, so judging never loads a project's CLAUDE.md or hooks and
-  never creates sessions that lanectl would then list.
+  never creates sessions that tracon would then list.

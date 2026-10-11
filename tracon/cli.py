@@ -1,4 +1,4 @@
-"""lanectl command line."""
+"""tracon command line."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def parse_at(s: str) -> datetime:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="lanectl", description="Watch Claude Code subagents: who is working, stuck or off track.")
+    p = argparse.ArgumentParser(prog="tracon", description="Watch Claude Code subagents: who is working, stuck or off track.")
     p.add_argument("command", nargs="?", choices=["tui", "web"], default="tui", help="tui (default) or web: serve the browser view only")
     p.add_argument("--project", "-p", help="project path (default: any project; newest session wins)")
     p.add_argument("--session", "-s", help="session id or prefix (default: the most recently active)")

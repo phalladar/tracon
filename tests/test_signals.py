@@ -3,10 +3,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from lanectl.probe import Proc, WorktreeProbe
-from lanectl.session import Session, SessionRef
-from lanectl.signals import Thresholds, assess, brief_paths, on_brief
-from lanectl.transcript import Transcript
+from tracon.probe import Proc, WorktreeProbe
+from tracon.session import Session, SessionRef
+from tracon.signals import Thresholds, assess, brief_paths, on_brief
+from tracon.transcript import Transcript
 
 T0 = datetime(2026, 10, 11, 12, 0, tzinfo=timezone.utc)
 PROJECT = "/repo"
@@ -67,7 +67,7 @@ class Builder:
         at = T0 + timedelta(minutes=at_min)
         if not live:
             return assess(s.agents["a1"], s, at)
-        import lanectl.signals as sig
+        import tracon.signals as sig
 
         orig, sig.now_utc = sig.now_utc, (lambda: at)
         try:

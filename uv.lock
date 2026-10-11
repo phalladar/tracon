@@ -222,34 +222,6 @@ wheels = [
 ]
 
 [[package]]
-name = "lanectl"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "textual" },
-]
-
-[package.optional-dependencies]
-api = [
-    { name = "anthropic" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anthropic", marker = "extra == 'api'" },
-    { name = "textual", specifier = ">=0.80" },
-]
-provides-extras = ["api"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8" }]
-
-[[package]]
 name = "linkify-it-py"
 version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -507,6 +479,34 @@ sdist = { url = "https://files.pythonhosted.org/packages/00/21/39a76b01bd5eea82a
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/be/35261223d9416a0751cdff1c7b4a6f881387218a12d439fe22fefebc8c04/textual-8.2.8-py3-none-any.whl", hash = "sha256:267375fd402dc8d981457212efa71f0e3365fd17bba144ba9bb3ed7563cb374a", size = 731418, upload-time = "2026-06-30T06:51:26.364Z" },
 ]
+
+[[package]]
+name = "tracon"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "textual" },
+]
+
+[package.optional-dependencies]
+api = [
+    { name = "anthropic" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", marker = "extra == 'api'" },
+    { name = "textual", specifier = ">=0.80" },
+]
+provides-extras = ["api"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8" }]
 
 [[package]]
 name = "truststore"

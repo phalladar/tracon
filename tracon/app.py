@@ -437,7 +437,7 @@ class TimelineScreen(Screen):
 
 
 class LaneApp(App):
-    TITLE = "lanectl"
+    TITLE = "tracon"
     CSS = """
     #header { height: auto; padding: 0 1; background: $boost; }
     #agents { height: 1fr; }

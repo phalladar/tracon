@@ -24,7 +24,7 @@ from .session import Agent, Session
 from .transcript import EDIT_TOOLS, HANDBACK_TOOLS, iter_until, parse_ts
 
 DEFAULT_MODEL = "claude-haiku-5-5"
-CACHE_DIR = os.path.expanduser("~/.cache/lanectl")
+CACHE_DIR = os.path.expanduser("~/.cache/tracon")
 VERDICTS = ("on_track", "drifting", "stuck", "unclear")
 
 SCHEMA = {
@@ -120,7 +120,7 @@ class Judge:
         os.replace(tmp, self.cache_path)
 
     def reload(self) -> None:
-        """Pick up judgments another lanectl process wrote."""
+        """Pick up judgments another tracon process wrote."""
         with self._lock:
             self.history = self._load()
 
