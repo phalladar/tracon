@@ -179,7 +179,7 @@ class LaneState:
             "lead_msgs": st.lead_msgs,
             "worktree": a.worktree,
             "flags": [{"code": f.code, "severity": f.severity, "detail": f.detail} for f in st.flags],
-            "judge": {"verdict": j.verdict, "doing": j.doing, "concern": j.concern, "as_of": ms(j.as_of_dt)} if j else None,
+            "judge": {"verdict": j.verdict, "doing": j.doing, "concern": j.concern, "as_of": ms(j.as_of_dt), "dismissed": st.dismissed} if j else None,
             "start": ms(events[0].ts) if events else None,
             "end": ms(events[-1].ts) if events else None,
             "segments": segs,

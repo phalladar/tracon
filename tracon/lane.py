@@ -115,7 +115,8 @@ def assess_all(
         for aid, st in statuses.items():
             j = judge.latest(aid, now)
             st.judgment = j
-            if j and j.verdict in JUDGE_FLAGS and not st.finished:
+            st.dismissed = bool(j and judge.is_dismissed(aid, j))
+            if j and j.verdict in JUDGE_FLAGS and not st.finished and not st.dismissed:
                 code, sev = JUDGE_FLAGS[j.verdict]
                 st.flags.append(Flag(code, sev, j.concern or j.doing))
     return statuses, matrix

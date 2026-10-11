@@ -95,6 +95,7 @@ class Status:
     flags: list[Flag] = field(default_factory=list)
     probe: WorktreeProbe | None = None
     judgment: object | None = None  # judge.Judgment, attached by lane.assess_all
+    dismissed: bool = False  # the user dismissed that judgment's drifting/stuck concern
 
     @property
     def severity(self) -> str:

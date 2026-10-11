@@ -31,7 +31,8 @@ FLAG_ADVICE = {
     "CTX": "Its context is large; it will slow down and forget instructions. Tell it to wrap up and hand back, "
     "or re-dispatch the rest fresh.",
     "ORPHAN": "A detached process is still running from its worktree. Kill it once nothing needs it.",
-    "DRIFT": "It may be off the brief (the judge's concern above). If so, SendMessage it to get back to the brief.",
+    "DRIFT": "It may be off the brief (the judge's concern above). If so, SendMessage it to get back to the brief; "
+    "if the extra work is fine, SendMessage it that it is approved, so the judge counts it as part of the brief.",
     "STUCK": "It may be stuck (the judge's concern above). Give it the missing piece, or TaskStop it and re-dispatch.",
 }
 
@@ -47,7 +48,7 @@ def compose(st: Status) -> str:
         lines += ["", "Flags:"] + [f"- {f.code}: {f.detail}" for f in flags]
     j = st.judgment
     concern = getattr(j, "concern", "") if j is not None and not getattr(j, "error", "") else ""
-    if concern and not any(f.detail == concern for f in flags):  # DRIFT/STUCK already carry it
+    if concern and not st.dismissed and not any(f.detail == concern for f in flags):  # DRIFT/STUCK already carry it
         lines += ["", f"Judge ({j.verdict}): {concern}"]
     if {f.code for f in flags} & QUOTE_REFUSAL_FOR:
         blocked = [e for e in a.transcript.events if e.kind == "tool_result" and (e.rejected or e.refused)]

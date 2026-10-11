@@ -97,6 +97,8 @@ def verdict_text(st: Status, judge: Judge | None) -> Text:
     if not j:
         return Text("")
     label, color = VERDICT_CELL.get(j.verdict, ("?", MUTED))
+    if st.dismissed:
+        return Text(label + " · dismissed", style=MUTED)
     return Text(label, style="grey50" if st.finished else color)
 
 
@@ -168,6 +170,7 @@ class DetailScreen(Screen):
         Binding("o", "app.open_worktree", "Open in Ghostty"),
         Binding("c", "app.copy_path", "Copy path"),
         Binding("n", "app.nudge_lead", "Nudge lead"),
+        Binding("d", "app.dismiss", "Dismiss"),
     ]
 
     def __init__(self, agent_id: str) -> None:
@@ -236,11 +239,13 @@ class DetailScreen(Screen):
         if j:
             label, color = VERDICT_CELL.get(j.verdict, ("?", MUTED))
             t.append("judge ", style="grey58")
-            t.append(label, style=f"bold {color}")
+            t.append(label, style=f"bold {MUTED if st.dismissed else color}")
             t.append(f"  {j.doing}", style="")
             t.append(f"   as of {local(j.as_of_dt, '%H:%M')}, {j.n_calls} calls\n", style="grey50")
             if j.concern:
-                t.append(f"      {j.concern}\n", style=color)
+                t.append(f"      {j.concern}\n", style=MUTED if st.dismissed else color)
+            if st.dismissed:
+                t.append("      dismissed: no DRIFT/STUCK flag, and the judge is told it is settled (d restores)\n", style=MUTED)
             changes = _verdict_changes(app.judge, agent.id, app.at) if app.judge else []
             if len(changes) > 1:
                 t.append("      history: ", style="grey50")
@@ -463,6 +468,7 @@ class LaneApp(App):
         Binding("w", "web", "Web"),
         Binding("j", "judge_now", "Judge"),
         Binding("n", "nudge_lead", "Nudge lead"),
+        Binding("d", "dismiss", "Dismiss"),
         Binding("h", "toggle_done", "Hide done"),
         Binding("o", "open_worktree", "Ghostty"),
         Binding("c", "copy_path", "Copy path"),
@@ -563,7 +569,7 @@ class LaneApp(App):
             if len(self.judge.in_flight) >= 2:
                 break
             agent = st.agent
-            if aid == force_id or self.judge.due(agent, st.finished):
+            if aid == force_id or self.judge.due(agent, st.finished, self.session):
                 self.run_judge(agent, f"{st.state}: {st.detail}")
 
     @work(thread=True, group="judge")
@@ -822,6 +828,18 @@ class LaneApp(App):
                 self.notify("no live inbox for the lead; copied the nudge to paste into its session", timeout=5)
         else:
             self.notify("select an agent to nudge the lead about", timeout=3)
+
+    def action_dismiss(self) -> None:
+        """Dismiss the judge's drifting/stuck verdict on the selected agent, or restore it."""
+        agent = self._current_agent()
+        st = self.statuses.get(agent.id) if agent else None
+        j = st.judgment if st else None
+        if not self.judge or not j or j.verdict not in ("drifting", "stuck"):  # type: ignore[union-attr]
+            self.notify("nothing to dismiss: the judge hasn't flagged it", timeout=3)
+            return
+        now = self.judge.toggle_dismiss(agent.id, j)  # type: ignore[union-attr, arg-type]
+        self.notify(f"{'dismissed' if now else 'restored'} the judge's concern on {agent.description}", timeout=3)  # type: ignore[union-attr]
+        self.tick()
 
     @work(thread=True, group="message")
     def send_nudge(self, sock: str, text: str, about: str) -> None:

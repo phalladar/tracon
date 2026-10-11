@@ -125,6 +125,7 @@ A good layout: your orchestrating session on one side, `tracon` in a split next 
 | `x` | files heatmap: which agents edited which files, concurrent edits marked `!` |
 | `w` | open the browser view |
 | `j` | ask the judge about the selected agent now |
+| `d` | dismiss the judge's drifting or stuck verdict on the selected agent (press again to restore) |
 | `n` | nudge the lead about the selected agent: sends a note with its state, flags and what to do (live only) |
 | `[` `]` / `{` `}` | rewind / forward 5 / 30 min (enters replay) · `space` play · `l` back to live |
 | `o` / `c` | open the agent's worktree in a new Ghostty window / copy its path |
@@ -216,8 +217,8 @@ on its agents or on you), so its activity is never mistaken for a subagent's.
 | **UNCOMMITTED** | Edits left uncommitted for 45 min | Work at risk if the worktree is cleaned up; have it commit |
 | **CTX** | Context above 300k (amber) or 450k (red) tokens | It will slow down and forget earlier instructions. Have it wrap up and hand back, or re-dispatch the rest fresh |
 | **ORPHAN** | A detached process is still running from its worktree. Grey while the agent is still working (usually it is polling its own `nohup` run); red once the agent goes quiet or finishes | Kill it once you're sure nothing needs it |
-| **DRIFT** | The judge says it is drifting (below) | See below |
-| **STUCK** | The judge says it is stuck (below) | See below |
+| **DRIFT** | The judge says it is drifting (below), and you haven't dismissed it | See below |
+| **STUCK** | The judge says it is stuck (below), and you haven't dismissed it | See below |
 
 ### Judge verdicts
 
@@ -229,8 +230,8 @@ judge's concern, and how the verdict has changed over time.
 | Verdict | Means | What to do |
 |---|---|---|
 | ✓ **on track** | Its recent actions serve the brief's steps, even if slowly | Nothing |
-| ↯ **drifting** (amber, adds **DRIFT**) | It is doing work the brief doesn't ask for, widening scope, or breaking a rule the brief states (running tests in the background when told to run them in the foreground, editing files it was told not to touch). The concern names an action it can see; growth that still serves the brief, or a baseline taken on the base branch, doesn't count | Read the concern in the detail. If it is real, have the lead message the agent to get back to the brief, or stop it. If the extra work is fine (your brief was narrower than you meant), ignore it |
-| ⟳ **stuck** (red, adds **STUCK**) | It repeats actions without progress, retries a failure without changing approach, or waits on something that won't come | Find the repeated failure in the feed. Give it the missing piece through the lead, or stop it and re-dispatch with a better brief |
+| ↯ **drifting** (amber, adds **DRIFT**) | It is doing work the brief doesn't ask for, widening scope, or breaking a rule the brief states (running tests in the background when told to run them in the foreground, editing files it was told not to touch). The concern names an action it can see; growth that still serves the brief, or a baseline taken on the base branch, doesn't count | Read the concern in the detail. If it is real, have the lead message the agent to get back to the brief, or stop it. If the extra work is fine (your brief was narrower than you meant), have the lead tell the agent so with `SendMessage`: the judge treats the lead's messages as part of the brief and checks again after the agent's next action. If it is a false alarm, press `d` to dismiss it |
+| ⟳ **stuck** (red, adds **STUCK**) | It repeats actions without progress, retries a failure without changing approach, or waits on something that won't come | Find the repeated failure in the feed. Give it the missing piece through the lead, or stop it and re-dispatch with a better brief. If it is a false alarm, press `d` to dismiss it |
 | ? **unclear** | Too little activity to tell | Nothing; wait |
 | … **judging** | A check is in progress | Nothing |
 | blank | Not judged yet (it needs 5 tool calls), or the judge is off | Nothing |
@@ -239,15 +240,25 @@ Verdicts refresh at most every 3 min per agent, after 5 more tool calls. Press `
 the selected agent now, for example after the lead has nudged it. Finished agents are never
 judged; their last verdict stays, greyed out, and DRIFT and STUCK are dropped.
 
+**Dismissing.** `d` on a drifting or stuck agent marks that verdict as dismissed: it shows
+greyed out as "· dismissed", DRIFT or STUCK goes away, the nudge leaves the concern out, and
+the next check lists it to the judge as a concern you've cleared, so it shouldn't be raised
+again on the same actions. A new concern flags as usual. `d` again restores the verdict.
+
 ## The judge (optional, on by default)
 
 Rules catch mechanical failures. For drift, `tracon` periodically asks a small model
 (Claude Haiku 5.5) to read an agent's brief, the lead's messages to it, and its last 40
 actions, and answer `on_track`, `drifting`, `stuck` or `unclear` with a one-line summary.
+The lead's messages amend the brief, so work the lead approved isn't drifting. Failed calls
+reach it with their whole message, so it can tell an agent doing what a refusal told it (split
+the command, use another tool) from one rewording its way around it.
 See [Judge verdicts](#judge-verdicts) for what each one means.
 
 - **When:** only active agents, at most every 3 min each, and only after 5 new tool calls.
-  Finished and idle agents are never judged.
+  One exception: after a drifting or stuck verdict, a message from the lead to that agent
+  gets one early re-check as soon as the agent acts on it. Finished and idle agents are
+  never judged.
 - **Cost:** about $0.001–0.002 per check. A busy run of five agents over several hours stays
   well under a dollar. A per-run budget (default $1.00) stops judging when reached, and the
   spend is shown in the header.
@@ -257,7 +268,10 @@ See [Judge verdicts](#judge-verdicts) for what each one means.
 - **Privacy:** checks send the brief and summaries of recent tool calls (commands, file
   paths, error text) to Anthropic, as your sessions already do. `--no-judge` turns it off.
 
-Judgments are cached in `~/.cache/tracon/judgments.json`, so replays and restarts show them.
+Judgments are cached in `~/.cache/tracon/judgments.json` and dismissals in
+`dismissed.json` beside it, so replays and restarts show them. Each verdict records the
+version of the prompt that made it; when an update changes the prompt, each active agent
+gets one re-check instead of keeping a verdict the old prompt made.
 
 ## Nudging the lead
 

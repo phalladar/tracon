@@ -371,8 +371,8 @@ function renderTimeline() {
     row.append(svgEl("text", { x: tx, y: cy + 4, class: numbered ? "muted" : (a.severity === "done" ? "muted" : "strong") }, title.length > room ? title.slice(0, room - 1) + "…" : title));
     if (a.judge) {
       const v = VERDICT[a.judge.verdict] || VERDICT.unclear;
-      const vt = svgEl("text", { x: LABEL_W - 12, y: cy + 4, "text-anchor": "end" }, `${v[0]} ${v[1]}`);
-      vt.style.fill = a.severity === "done" ? css("--text-muted") : `var(${v[2]})`;
+      const vt = svgEl("text", { x: LABEL_W - 12, y: cy + 4, "text-anchor": "end" }, `${v[0]} ${v[1]}${a.judge.dismissed ? " · dismissed" : ""}`);
+      vt.style.fill = a.severity === "done" || a.judge.dismissed ? css("--text-muted") : `var(${v[2]})`;
       vt.dataset.tip = JSON.stringify({ v: v[1], s: "Judge, as of " + hm(a.judge.as_of), l: [a.judge.doing, a.judge.concern].filter(Boolean) });
       row.append(vt);
     }
@@ -540,8 +540,8 @@ async function loadDrawer(id) {
   if (a.judge) {
     const v = VERDICT[a.judge.verdict] || VERDICT.unclear;
     const j = el("div", { class: "judge" });
-    const head = el("div", { class: "state" }, `${v[0]} ${v[1]}`);
-    head.style.color = `var(${v[2]})`;
+    const head = el("div", { class: "state" }, `${v[0]} ${v[1]}${a.judge.dismissed ? " · dismissed" : ""}`);
+    head.style.color = a.judge.dismissed ? "var(--text-muted)" : `var(${v[2]})`;
     j.append(head, el("div", {}, a.judge.doing));
     if (a.judge.concern) j.append(el("div", { class: "kv" }, a.judge.concern));
     j.append(el("div", { class: "meta" }, "Judge, as of " + hm(a.judge.as_of)));

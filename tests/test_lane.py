@@ -121,12 +121,92 @@ def test_judge_due_needs_new_calls_and_time(lane, tmp_path):
     agent = s.agents["a"]
     assert j.due(agent, finished=False)
     assert not j.due(agent, finished=True)
-    j.history["a"] = [Judgment("on_track", "x", "", ts(5), 6, made=__import__("time").time())]
+    j.history["a"] = [Judgment("on_track", "x", "", ts(5), 6, made=__import__("time").time(), prompt_v=judge_mod.PROMPT_VERSION)]
     assert not j.due(agent, finished=False)  # nothing new since
     j.spent = 5.0
     j.budget_usd = 1.0
     j.history = {}
     assert not j.due(agent, finished=False)  # over budget
+
+
+
+def test_judge_rechecks_drift_early_once_the_lead_answers(lane, tmp_path):
+    import time
+
+    lane.agent("a", "#1", 0)
+    for m in range(6):
+        lane.call("a", m, "Bash", {"command": f"echo {m}"})
+    j = Judge(backend="cli", cache_dir=str(tmp_path / "cache"), min_new_calls=5, min_interval_s=180)
+    j.history["a"] = [Judgment("drifting", "x", "Restyling admin.", ts(5), 6, made=time.time() - 60, prompt_v=judge_mod.PROMPT_VERSION)]
+    s = lane.session()
+    assert not j.due(s.agents["a"], False, s)  # no answer from the lead yet
+    now = datetime.now(timezone.utc)
+    stamp = now.isoformat().replace("+00:00", "Z")
+    send = {"type": "tool_use", "id": "m1", "name": "SendMessage", "input": {"to": "a", "message": "Admin restyle is approved, carry on."}}
+    lane.lead.append({"type": "assistant", "timestamp": stamp, "cwd": ROOT, "message": {"id": "m1", "content": [send]}})
+    s = lane.session()
+    assert not j.due(s.agents["a"], False, s)  # wait until the agent has acted on it
+    lane.call("a", 7, "Bash", {"command": "echo 7"})
+    s = lane.session()
+    assert j.due(s.agents["a"], False, s)
+    assert not j.due(s.agents["a"], False)  # needs the session to see the lead
+    j.history["a"][0] = Judgment("on_track", "x", "", ts(5), 6, made=time.time() - 60, prompt_v=judge_mod.PROMPT_VERSION)
+    assert not j.due(s.agents["a"], False, s)  # only drifting/stuck get the early check
+    j.history["a"][0] = Judgment("drifting", "x", "Restyling admin.", ts(7), 7, made=time.time(), prompt_v=judge_mod.PROMPT_VERSION)
+    assert not j.due(s.agents["a"], False, s)  # already judged since the message
+
+
+
+def test_judge_rechecks_a_verdict_from_an_older_prompt_once(lane, tmp_path):
+    import time
+
+    lane.agent("a", "#1", 0)
+    for m in range(6):
+        lane.call("a", m, "Bash", {"command": f"echo {m}"})
+    s = lane.session()
+    j = Judge(backend="cli", cache_dir=str(tmp_path / "cache"))
+    j.history["a"] = [Judgment("drifting", "x", "Old concern.", ts(5), 6, made=time.time(), prompt_v="0ldpr0mt")]
+    assert j.due(s.agents["a"], False, s)  # nothing new, but the prompt has changed since
+    assert not j.due(s.agents["a"], True, s)  # finished agents still never
+    j.history["a"].append(Judgment("on_track", "x", "", ts(5), 6, made=time.time(), prompt_v=judge_mod.PROMPT_VERSION))
+    assert not j.due(s.agents["a"], False, s)
+
+
+def test_dismissed_drift_drops_the_flag_and_reaches_the_judge(lane, tmp_path, monkeypatch):
+    lane.agent("a", "#768 night plan", 0)
+    for m in range(6):
+        lane.call("a", m, "Bash", {"command": f"echo {m}"})
+    s = lane.session()
+    cache = str(tmp_path / "cache")
+    j = Judge(backend="cli", cache_dir=cache)
+    concern = "Reworded refused commands instead of reporting them."
+    j.history["a"] = [Judgment("drifting", "running walks", concern, at(5).isoformat(), 6, made=1000.0, prompt_v=judge_mod.PROMPT_VERSION)]
+    st = assess_all(s, at(6), judge=j)[0]["a"]
+    assert "DRIFT" in [f.code for f in st.flags] and not st.dismissed
+
+    assert j.toggle_dismiss("a", st.judgment) is True
+    st = assess_all(s, at(6), judge=j)[0]["a"]
+    assert "DRIFT" not in [f.code for f in st.flags] and st.dismissed
+    j2 = Judge(backend="cli", cache_dir=cache)  # survives a restart, and another process sees it
+    assert j2.is_dismissed("a", j2.latest("a"))
+
+    seen = {}
+
+    def fake_run(args, input, **kw):
+        seen["input"] = input
+        out = {"is_error": False, "total_cost_usd": 0.001, "structured_output": {"verdict": "drifting", "doing": "Editing admin", "concern": "Now restyling admin pages."}}
+        return subprocess.CompletedProcess(args, 0, json.dumps(out), "")
+
+    monkeypatch.setattr(judge_mod.subprocess, "run", fake_run)
+    j.run(s.agents["a"], s)
+    assert "Concerns the human has reviewed and cleared:\n- " in seen["input"]
+    assert f"drifting: {concern}" in seen["input"]
+    st = assess_all(s, at(6), judge=j)[0]["a"]  # a new concern flags again
+    assert "Now restyling admin pages." in [f.detail for f in st.flags if f.code == "DRIFT"]
+
+    first = j.history["a"][0]
+    assert j.toggle_dismiss("a", first) is False  # pressing it again restores
+    assert j.cleared("a") == []
 
 
 def refusal(wt):

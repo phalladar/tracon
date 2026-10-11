@@ -128,3 +128,17 @@ def test_compose_quotes_the_last_refusal_for_a_drift(lane, tmp_path):  # noqa: F
     quote = next(line for line in text.splitlines() if line.startswith("Its last refusal"))
     assert ", 3 in all): This agent is isolated in the worktree <worktree>," in quote
     assert quote.endswith("run them from <worktree>.")
+
+
+def test_compose_leaves_out_a_dismissed_concern(lane, tmp_path):  # noqa: F811
+    from tracon.judge import Judge, Judgment
+
+    lane.agent("a1", "#12 fix the parser")
+    lane.call("a1", 1, "Bash", {"command": "pytest -k parser"})
+    s = lane.session()
+    j = Judge(backend="cli", cache_dir=str(tmp_path / "cache"))
+    j.history["a1"] = [Judgment("drifting", "rewriting lexer", "It rewrote the lexer.", ts(1), 1, made=0.0)]
+    j.toggle_dismiss("a1", j.history["a1"][0])
+    statuses, _ = assess_all(s, T0 + timedelta(minutes=1.5), judge=j)
+    text = compose(statuses["a1"])
+    assert "lexer" not in text and "DRIFT" not in text

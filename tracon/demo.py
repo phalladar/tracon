@@ -164,9 +164,10 @@ class DemoJudge(Judge):
     def __init__(self, cache_dir: str) -> None:
         super().__init__(backend="demo", cache_dir=cache_dir)
         self.history = {}
+        self.dismissed = {}
         self.spent = 0.0
 
-    def due(self, agent, finished: bool) -> bool:
+    def due(self, agent, finished: bool, session=None) -> bool:
         return False
 
     def run(self, agent, session, state_line: str = "", at=None) -> Judgment:

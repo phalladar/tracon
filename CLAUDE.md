@@ -34,7 +34,10 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
   facts (file collisions via `file_matrix`) and the judge's verdicts on top of `assess`.
 - `judge.py`: optional LLM check. Two backends: SDK (`api`, needs a key and the `[api]`
   extra) or `claude -p` (`cli`). Scheduling (`due`), budget, and an on-disk cache in
-  `~/.cache/tracon/`. Failures are recorded on the `Judgment`, never raised.
+  `~/.cache/tracon/` (verdicts, and the user's dismissals from `d`). Failures are recorded
+  on the `Judgment`, never raised. Each `Judgment` carries `PROMPT_VERSION` (a hash of
+  `SYSTEM`, the schema and `PROMPT_FORMAT`); bump `PROMPT_FORMAT` when `build_prompt`'s
+  layout changes so old verdicts get re-checked.
 - `demo.py`: `--demo`. Writes a synthetic lead + seven agents to a temp dir (times relative to
   now), with a canned `DemoProber` and `DemoJudge` (never calls a model) and a ticker thread
   that keeps busy agents busy. `scripts/screenshots.py` drives it for the README images;
@@ -51,9 +54,9 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
 
 ## Rules
 
-- Never write to `~/.claude/` or to a watched repo. The only writes are the judge cache and a
-  nudge to the lead's inbox socket, sent only when the user presses `n` (one keypress, no
-  preview; a toast confirms it). Never send automatically, never send to a subagent, and never read
+- Never write to `~/.claude/` or to a watched repo. The only writes are the judge cache
+  (verdicts and dismissals) and a nudge to the lead's inbox socket, sent only when the user
+  presses `n` (one keypress, no preview; a toast confirms it). Never send automatically, never send to a subagent, and never read
   the `~/.claude/sessions/*.key` files (auth is optional on macOS/Linux).
 - Keep `signals.py` pure; anything that needs several agents goes in `lane.py`.
 - A new state or flag needs a test in `tests/` built from a synthetic transcript (see the
