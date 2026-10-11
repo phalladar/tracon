@@ -46,14 +46,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--judge-every", type=float, default=3, help="minimum minutes between checks of one agent (default 3)")
     p.add_argument("--title-prefix", default="◎ ", help="prefix for the terminal title, which tracon sets to the watched session's name (default '◎ ')")
     p.add_argument("--no-title", action="store_true", help="leave the terminal title alone")
+    p.add_argument("--demo", action="store_true", help="watch a made-up run (no Claude Code session needed)")
     p.add_argument("--port", type=int, default=8765, help="web view port (default 8765; the next free one is used)")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    # Inside a project with lanes, prefer its sessions; otherwise the newest anywhere.
-    refs = find_sessions(args.project) if args.project else (find_sessions(os.getcwd()) or find_sessions())
+    demo = None
+    if args.demo:
+        from .demo import Demo
+
+        demo = Demo().start()
+        refs = [demo.ref]
+    else:
+        # Inside a project with lanes, prefer its sessions; otherwise the newest anywhere.
+        refs = find_sessions(args.project) if args.project else (find_sessions(os.getcwd()) or find_sessions())
     if args.list:
         for r in refs[:20]:
             when = datetime.fromtimestamp(r.mtime).strftime("%Y-%m-%d %H:%M")
@@ -67,10 +75,12 @@ def main(argv: list[str] | None = None) -> int:
     th = Thresholds(idle_s=args.idle * 60, stall_s=args.stall * 60)
     at = parse_at(args.at) if args.at else None
     judge = None
-    if not args.no_judge:
+    if demo and not args.no_judge:
+        judge = demo.judge
+    elif not args.no_judge:
         judge = Judge(model=args.judge_model, backend=args.judge_backend, budget_usd=args.judge_budget, min_interval_s=args.judge_every * 60)
     if args.once:
-        return print_snapshot(Session(refs[0]), at, th, judge)
+        return print_snapshot(Session(refs[0]), at, th, judge, demo.prober if demo else None)
     if args.command == "web":
         import webbrowser
 
@@ -78,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
 
         url_at = f"?at={quote(at.isoformat())}" if at else ""
         # Standalone web view shows judgments a running TUI makes; it does not judge by itself.
-        probes = standalone_probes(refs[0])
+        probes = demo.prober.all if demo else standalone_probes(refs[0])
         import threading
 
         threading.Timer(0.8, lambda: webbrowser.open(f"http://127.0.0.1:{args.port}/{url_at}")).start()
@@ -86,8 +96,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     from .app import LaneApp
 
-    app = LaneApp(refs, at=at, thresholds=th, notify=not args.no_notify, judge=judge, web_port=args.port,
-                  title_prefix=None if args.no_title else args.title_prefix)
+    app = LaneApp(refs, at=at, thresholds=th, notify=not args.no_notify and demo is None, judge=judge, web_port=args.port,
+                  title_prefix=None if args.no_title else args.title_prefix, prober=demo.prober if demo else None)
     try:
         app.run()
     finally:
@@ -97,12 +107,12 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def print_snapshot(session: Session, at: datetime | None, th: Thresholds, judge: Judge | None = None) -> int:
+def print_snapshot(session: Session, at: datetime | None, th: Thresholds, judge: Judge | None = None, prober=None) -> int:
     session.refresh()
     probes = {}
     if at is None:
         wts = [a.worktree for a in session.agents.values() if a.worktree]
-        probes = Prober().probe(wts)
+        probes = (prober or Prober()).probe(wts)
     statuses, _ = assess_all(session, at, probes, th, judge)
     rows = sorted(statuses.values(), key=lambda s: s.sort_key())
     when = (at or datetime.now(timezone.utc)).astimezone().strftime("%Y-%m-%d %H:%M")

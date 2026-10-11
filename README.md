@@ -1,30 +1,84 @@
 # tracon
 
-**Air traffic control for parallel Claude Code subagents.** A live terminal (and browser)
-monitor that flags stuck, blocked and drifting agents, and the worktree file conflicts
-headed for your merge.
+**Air traffic control for parallel Claude Code subagents.** A live terminal and browser monitor
+that spots stuck, blocked and drifting agents, and the worktree file conflicts headed for your
+merge.
 
-When one Claude Code session orchestrates several subagents (a tech-lead skill dispatching
-tasks to worktree agents, say), the status line tells you almost nothing. Like a
-[TRACON](https://en.wikipedia.org/wiki/Terminal_radar_approach_control_facilities) controller
-watching every aircraft on one scope, `tracon` shows every agent at once: what it is doing,
-whether it is holding, whether it has drifted off its brief, and whether two of them are on
-a collision course in the same file. Run it in a terminal split next to your session.
+[![PyPI](https://img.shields.io/pypi/v/tracon)](https://pypi.org/project/tracon/)
+[![Python 3.12+](https://img.shields.io/pypi/pyversions/tracon)](https://pypi.org/project/tracon/)
+[![tests](https://github.com/phalladar/tracon/actions/workflows/test.yml/badge.svg)](https://github.com/phalladar/tracon/actions/workflows/test.yml)
+[![MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-It reads only what Claude Code already writes to disk. It never writes to your repository,
-and it sends something to a session only when you press `m` and confirm (see
-[Messaging the lead](#messaging-the-lead)).
+![A replay of a Claude Code run in the tracon browser view: seven subagents spawn and work over an hour and a half, coloured by edits, shell calls and reads, until two need attention, one is drifting and one is stuck](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/replay.gif)
+
+```sh
+uvx tracon --demo     # look around a made-up run; no Claude Code session needed
+uvx tracon            # watch your newest Claude Code session that has subagents
+```
+
+You dispatched six agents an hour ago. One has been waiting 40 minutes on a permission prompt
+nobody can see. Two are editing `shop/cart.py` at the same time. One is restyling the admin
+pages its brief said to leave alone, and another has run the same failing command six times.
+Claude Code's status line shows none of it.
+
+Like a [TRACON](https://en.wikipedia.org/wiki/Terminal_radar_approach_control_facilities)
+controller watching every aircraft on one scope, `tracon` shows every agent at once: what it
+is doing, whether it is holding, whether it has drifted off its brief, and whether two of them
+are on a collision course in the same file. Run it in a split next to your session.
+
+- **Read-only and local.** It reads the transcripts Claude Code already writes to disk and
+  never writes to your repository. It sends something to a session only when you press `m`
+  and confirm.
+- **No setup.** No hooks, no config, no account. Point it at a project, or let it find the
+  newest session.
+- **Optional LLM judge.** A small model checks each busy agent against its brief. A busy run
+  stays well under a dollar, with a hard per-run budget. `--no-judge` turns it off.
 
 > tracon is an independent project. It is not affiliated with, endorsed by or sponsored by
 > Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
 
 ## What it catches
 
+### Every agent on one scope
+
 Agents waiting on a permission prompt nobody can answer, agents that went quiet, hung test
 runs, processes left behind, loops, edits to the wrong checkout or on a stale base, two agents
 changing the same file, and (with the optional [judge](#the-judge-optional-on-by-default))
-agents drifting from their brief. [Reading the screen](#reading-the-screen) lists every state
-and flag, what it means, and what to do about it.
+agents drifting from their brief. Red needs you now; amber is worth a look.
+
+![tracon's terminal view: a table of agents with states BLOCKED, IDLE, RUNNING and WORKING, judge verdicts on track, drifting and stuck, and flags such as LOOP, COLLIDE and STALE-BASE; below it, the selected agent's feed of repeated connection-refused errors](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/tui-overview.png)
+
+### Why one is in trouble
+
+`enter` opens an agent: what it is doing, the judge's concern and how the verdict changed,
+every flag explained, the files it touched outside its brief, and its full activity feed.
+
+![tracon's detail view of an agent the judge marks as drifting: it has edited admin files its brief says to leave alone](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/tui-detail.png)
+
+### Merge conflicts before the merge
+
+`x` shows which agent edited which file. `!` marks a file two agents were editing at the same
+time.
+
+![tracon's files heatmap: rows of files, one column per agent, with two agents both editing shop/cart.py marked with an exclamation mark](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/tui-files.png)
+
+### A note to the lead, drafted for you
+
+`m` drafts a message to your orchestrating session: the agent's state, flags, the judge's
+concern and what to do. Edit it, then send it with `ctrl+s` (see
+[Messaging the lead](#messaging-the-lead)).
+
+![tracon's message dialog with a drafted note about an agent stuck retrying the same failing command](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/tui-message-lead.png)
+
+### Replay the whole run
+
+`t` is the timeline. `[` and `]` rewind and forward, `space` plays it back, and
+`--at "07:20"` opens any past session as it stood at that time.
+
+![tracon's terminal timeline: one row per agent, coloured by edits, shell calls and reads, with silent stretches dotted](https://raw.githubusercontent.com/phalladar/tracon/main/docs/screenshots/tui-timeline.png)
+
+[Reading the screen](#reading-the-screen) lists every state and flag, what it means, and what
+to do about it.
 
 While it runs, a macOS notification fires when an agent needs you, and the terminal title is
 set to the watched session's name (`◎ <name>`, mirroring Claude Code's `✳ <name>`), so the
@@ -32,19 +86,25 @@ split reads as part of that session.
 
 ## Install
 
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.12+. Built and tested on macOS; see [Limitations](#limitations) for Linux.
 
 ```sh
-git clone <this repo> tracon && cd tracon
-uv tool install --editable .            # puts `tracon` on your PATH
-# optional: judge through the Anthropic API instead of `claude -p`
-uv tool install --editable '.[api]'
+uv tool install tracon            # or: pipx install tracon
+uv tool install 'tracon[api]'     # optional: judge through the Anthropic API instead of `claude -p`
+```
+
+Or run it without installing: `uvx tracon`. From source:
+
+```sh
+git clone https://github.com/phalladar/tracon && cd tracon
+uv tool install --editable .
 ```
 
 ## Use
 
 ```sh
 cd your-project && tracon     # newest session with subagents in this project (or anywhere)
+tracon --demo                 # a made-up run, to look around
 tracon web                    # browser view only
 tracon --list                 # recent sessions that spawned subagents
 tracon -s 4f2a                # pick a session by id prefix
@@ -210,6 +270,7 @@ messages from your own user on macOS and Linux.
 | `--judge-backend` | `auto` | `api` or `cli` |
 | `--judge-budget USD` | 1.00 | stop judging after this much per run |
 | `--judge-every MIN` | 3 | minimum time between checks of one agent |
+| `--demo` | | watch a made-up run instead of a real session |
 | `--port` | 8765 | browser view port (the next free one if taken) |
 | `--title-prefix` | `◎ ` | prefix for the terminal title tracon sets to the session's name |
 | `--no-title` | | leave the terminal title alone |
@@ -239,6 +300,7 @@ tracon/
   lane.py        whole-run view: file collisions, judge results, assess_all()
   judge.py       the optional LLM check, its scheduling, budget and cache
   advice.py      the note `m` drafts for the lead
+  demo.py        the made-up run behind `--demo`
   inbox.py       find a live session's inbox socket and send to it
   app.py         Textual TUI
   web.py         local HTTP server + JSON API; static/index.html is the page
@@ -261,6 +323,7 @@ tracon/
 uv sync --group dev
 uv run pytest                      # synthetic transcripts; no Claude Code or network needed
 uv run tracon --once --no-judge   # quick check against your latest session
+uv run --with pillow python scripts/screenshots.py   # regenerate docs/screenshots from the demo (macOS, Chrome)
 ```
 
 See [CLAUDE.md](CLAUDE.md) for architecture notes and conventions.

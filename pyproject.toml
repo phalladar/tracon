@@ -8,13 +8,23 @@ license-files = ["LICENSE"]
 authors = [{ name = "Josh Auriemma" }]
 requires-python = ">=3.12"
 dependencies = ["textual>=0.80"]
-keywords = ["claude-code", "agents", "subagents", "tui", "monitoring", "textual"]
+keywords = ["claude-code", "agents", "subagents", "multi-agent", "git-worktree", "tui", "monitoring", "observability", "textual"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Environment :: Console",
+    "Intended Audience :: Developers",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development",
+    "Topic :: Software Development :: Quality Assurance",
 ]
+
+[project.urls]
+Homepage = "https://github.com/phalladar/tracon"
+Source = "https://github.com/phalladar/tracon"
+Issues = "https://github.com/phalladar/tracon/issues"
 
 [project.optional-dependencies]
 # Judge through the Anthropic API (ANTHROPIC_API_KEY) instead of `claude -p`.
@@ -25,6 +35,10 @@ tracon = "tracon.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]
+
+[tool.hatch.build.targets.sdist]
+# An explicit list: keeps local files (.claude/, dist/) and the README screenshots out.
+include = ["tracon/", "tests/", "README.md", "LICENSE", "pyproject.toml"]
 
 [build-system]
 requires = ["hatchling"]

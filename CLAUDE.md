@@ -11,6 +11,8 @@ uv run pytest                                   # all tests; fast, offline, no C
 uv run tracon --once --no-judge                 # snapshot of the newest session, no TUI
 uv run tracon --once --no-judge --at "HH:MM"    # replay a moment (needs a real session)
 uv run tracon web --no-judge                    # browser view only
+uv run tracon --demo                            # made-up run; no session needed
+uv run --with pillow python scripts/screenshots.py  # regenerate docs/screenshots + replay.gif
 ```
 
 `tracon` on PATH is an editable `uv tool` install, so code changes apply immediately.
@@ -32,6 +34,9 @@ uv run tracon web --no-judge                    # browser view only
 - `judge.py`: optional LLM check. Two backends: SDK (`api`, needs a key and the `[api]`
   extra) or `claude -p` (`cli`). Scheduling (`due`), budget, and an on-disk cache in
   `~/.cache/tracon/`. Failures are recorded on the `Judgment`, never raised.
+- `demo.py`: `--demo`. Writes a synthetic lead + seven agents to a temp dir (times relative to
+  now), with a canned `DemoProber` and `DemoJudge` (never calls a model) and a ticker thread
+  that keeps busy agents busy. `scripts/screenshots.py` drives it for the README images.
 - `advice.py`: drafts the note `m` sends the lead (state, flags, judge concern, advice
   mirroring README's "What to do"). Pure.
 - `inbox.py`: finds the lead's live process in `~/.claude/sessions/<pid>.json` and writes one
@@ -87,3 +92,5 @@ uv run tracon web --no-judge                    # browser view only
 - `claude -p` runs with `cwd=~/.cache/tracon`, `--setting-sources ""` and
   `--no-session-persistence`, so judging never loads a project's CLAUDE.md or hooks and
   never creates sessions that tracon would then list.
+- README images use absolute `raw.githubusercontent.com` URLs so they also render on PyPI.
+  The sdist is an explicit include list in `pyproject.toml`; keep `.claude/` and images out.

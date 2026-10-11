@@ -527,6 +527,7 @@ class LaneApp(App):
         judge: Judge | None = None,
         web_port: int = 8765,
         title_prefix: str | None = "◎ ",
+        prober: Prober | None = None,
     ) -> None:
         super().__init__()
         self.title_prefix = title_prefix
@@ -544,7 +545,7 @@ class LaneApp(App):
         self.playing = False
         self.statuses: dict[str, Status] = {}
         self.probes: dict[str, WorktreeProbe] = {}
-        self.prober = Prober()
+        self.prober = prober or Prober()
         self._order: list[str] = []
         self._seen: dict[str, tuple[str, frozenset]] | None = None
 
