@@ -40,7 +40,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from screenshots import chrome_png  # noqa: E402
 
 OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "docs/screenshots/hero.gif")
-LEFT, RIGHT, ROWS = 78, 200, 36  # columns per pane, rows
+LEFT, RIGHT, ROWS = 78, 214, 36  # columns per pane, rows
 GIF_WIDTH = 2400
 
 ORANGE, GREY, DIM, WHITE = "#d77757", "#8a8a8a", "#5f5f5f", "#e6e6e6"
