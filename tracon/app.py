@@ -685,6 +685,7 @@ class LaneApp(App):
         rows = sorted(self.statuses.values(), key=lambda s: s.sort_key())
         if self.hide_done:
             rows = [r for r in rows if not r.finished]
+        hover = table.hover_coordinate  # clear() resets it to the first row; the mouse hasn't moved
         table.clear()
         self._order = []
         lstate, lsev, lnow = self.lead_row()
@@ -729,6 +730,8 @@ class LaneApp(App):
             self._order.append(st.agent.id)
         if selected in self._order:
             table.move_cursor(row=self._order.index(selected), animate=False)
+        if hover.row < table.row_count:
+            table.hover_coordinate = hover
         self._marked = None
         self._mark_cursor()
 
