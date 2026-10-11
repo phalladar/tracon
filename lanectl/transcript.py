@@ -1,0 +1,260 @@
+"""Incremental parsing of Claude Code JSONL transcripts into compact events.
+
+Transcripts are not a public API. Everything that depends on their shape lives in
+this module so a format change is fixed in one place.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Iterator
+
+EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+# Tools that return in well under a second; a pending one is waiting on a person.
+INSTANT_TOOLS = EDIT_TOOLS | {"Read", "Grep", "Glob", "LS", "TodoWrite", "ToolSearch"}
+HANDBACK_TOOLS = {"SubagentHandback"}
+COORDINATION_TOOLS = {"SendMessage", "TaskStop", "Agent", "Task"}
+COMMAND_RE = re.compile(r"<command-name>/?([^<]+)</command-name>")
+COMMAND_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.S)
+
+COORDINATOR_PREFIX = "The coordinator sent a message"
+SYSTEM_NOTIFICATION_PREFIX = "[SYSTEM NOTIFICATION"
+REJECTED_MARKERS = (
+    "doesn't want to proceed",
+    "tool use was rejected",
+    "Request interrupted by user",
+    "Permission for this action was denied",
+)
+
+MERGE_BASE_RE = re.compile(r"\bgit\s+(merge|rebase|pull)\b[^\n;&|]*\b(master|main)\b")
+COMMIT_RE = re.compile(r"\bgit\s+commit\b")
+# nohup, setsid, disown, or a lone trailing `&` (not `&&`): work that outlives the tool call.
+DETACH_RE = re.compile(r"\bnohup\b|\bsetsid\b|\bdisown\b|(?<![&>|])&\s*(?:$|;|\n|\))")
+
+
+def parse_ts(s: str) -> datetime:
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+@dataclass(slots=True)
+class Event:
+    ts: datetime
+    kind: str  # tool_use | tool_result | text | coordinator | notification | brief
+    tool: str = ""
+    summary: str = ""
+    key: str = ""  # identity of a tool call, for loop detection
+    tool_id: str = ""
+    is_error: bool = False
+    rejected: bool = False
+    path: str = ""  # file edited, for edit tools
+    background: bool = False
+    extra: dict | None = None  # raw input, kept only for coordination tools
+
+
+@dataclass
+class Transcript:
+    """One JSONL file, read incrementally from where the last read stopped."""
+
+    path: str
+    events: list[Event] = field(default_factory=list)
+    brief: str = ""
+    branches: list[tuple[datetime, str]] = field(default_factory=list)
+    ctx: list[tuple[datetime, int]] = field(default_factory=list)  # context tokens per turn
+    output_tokens: int = 0
+    cwd: str = ""
+    commands: list[tuple[datetime, str, str]] = field(default_factory=list)  # slash commands
+    _offset: int = 0
+    _partial: bytes = b""
+    _seen_msg_ids: set = field(default_factory=set)
+
+    def refresh(self) -> bool:
+        """Read any appended lines. Returns True when something new arrived."""
+        try:
+            size = os.path.getsize(self.path)
+        except OSError:
+            return False
+        if size < self._offset:  # truncated or replaced: start over
+            self.__init__(self.path)  # type: ignore[misc]
+        if size == self._offset:
+            return False
+        with open(self.path, "rb") as f:
+            f.seek(self._offset)
+            chunk = f.read()
+        self._offset += len(chunk)
+        data = self._partial + chunk
+        lines = data.split(b"\n")
+        self._partial = lines.pop()  # incomplete last line, if any
+        for line in lines:
+            if line.strip():
+                try:
+                    self._ingest(json.loads(line))
+                except (ValueError, KeyError, TypeError):
+                    continue
+        return True
+
+    # -- record handling -------------------------------------------------
+
+    def _ingest(self, rec: dict) -> None:
+        rtype = rec.get("type")
+        ts_raw = rec.get("timestamp")
+        if rtype not in ("user", "assistant") or not ts_raw:
+            return
+        ts = parse_ts(ts_raw)
+        if rec.get("cwd") and not self.cwd:
+            self.cwd = rec["cwd"]
+        branch = rec.get("gitBranch")
+        if branch and (not self.branches or self.branches[-1][1] != branch):
+            self.branches.append((ts, branch))
+        msg = rec.get("message") or {}
+        content = msg.get("content")
+        if rtype == "assistant":
+            self._assistant(ts, msg, content)
+        else:
+            self._user(ts, content)
+
+    def _assistant(self, ts: datetime, msg: dict, content) -> None:
+        usage = msg.get("usage") or {}
+        mid = msg.get("id")
+        if usage and mid not in self._seen_msg_ids:
+            # One API response is split over several records that repeat its usage.
+            self._seen_msg_ids.add(mid)
+            self.output_tokens += usage.get("output_tokens", 0)
+            total = (
+                usage.get("input_tokens", 0)
+                + usage.get("cache_read_input_tokens", 0)
+                + usage.get("cache_creation_input_tokens", 0)
+            )
+            if total:
+                self.ctx.append((ts, total))
+        if not isinstance(content, list):
+            return
+        for b in content:
+            bt = b.get("type")
+            if bt == "tool_use":
+                self.events.append(_tool_use_event(ts, b, self.cwd))
+            elif bt == "text" and b.get("text", "").strip():
+                self.events.append(Event(ts, "text", summary=_one_line(b["text"])))
+
+    def _user(self, ts: datetime, content) -> None:
+        if isinstance(content, str):
+            self._user_text(ts, content)
+            return
+        if not isinstance(content, list):
+            return
+        for b in content:
+            if not isinstance(b, dict):
+                continue
+            if b.get("type") == "tool_result":
+                text = _result_text(b.get("content"))
+                rejected = any(m in text for m in REJECTED_MARKERS)
+                self.events.append(
+                    Event(
+                        ts,
+                        "tool_result",
+                        tool_id=b.get("tool_use_id", ""),
+                        is_error=bool(b.get("is_error")) or rejected,
+                        rejected=rejected,
+                        summary=_one_line(text),
+                    )
+                )
+            elif b.get("type") == "text":
+                self._user_text(ts, b.get("text", ""))
+
+    def _user_text(self, ts: datetime, text: str) -> None:
+        t = text.strip()
+        if not t:
+            return
+        m = COMMAND_RE.search(t)
+        if m and t.startswith("<command-"):
+            a = COMMAND_ARGS_RE.search(t)
+            self.commands.append((ts, m.group(1).strip(), a.group(1).strip() if a else ""))
+            return
+        if not self.brief:
+            self.brief = t
+            self.events.append(Event(ts, "brief", summary=_one_line(t)))
+        elif t.startswith(COORDINATOR_PREFIX):
+            self.events.append(Event(ts, "coordinator", summary=_one_line(t.split(":", 1)[-1])))
+        elif t.startswith(SYSTEM_NOTIFICATION_PREFIX):
+            self.events.append(Event(ts, "notification", summary=_one_line(t)))
+        elif t.startswith("[Request interrupted"):
+            self.events.append(Event(ts, "notification", summary=t, is_error=True))
+        # <system-reminder> and similar harness text is not shown.
+
+
+def _tool_use_event(ts: datetime, b: dict, cwd: str) -> Event:
+    name = b.get("name", "?")
+    inp = b.get("input") or {}
+    path = ""
+    if name in EDIT_TOOLS:
+        path = inp.get("file_path") or inp.get("notebook_path") or ""
+        summary = _rel(path, cwd)
+        key = ""
+    elif name == "Bash":
+        cmd = inp.get("command", "")
+        summary = inp.get("description") or _one_line(cmd)
+        summary = f"{summary}  $ {_one_line(cmd, 80)}" if inp.get("description") else summary
+        key = "Bash:" + cmd.strip()
+    elif name == "Read":
+        path = inp.get("file_path", "")
+        p = _rel(path, cwd)
+        rng = f":{inp['offset']}" if inp.get("offset") else ""
+        summary = p + rng
+        key = f"Read:{p}{rng}:{inp.get('limit', '')}"
+    elif name in ("Grep", "Glob"):
+        summary = f"{inp.get('pattern', '')}  {_rel(inp.get('path', ''), cwd)}".strip()
+        key = f"{name}:{json.dumps(inp, sort_keys=True)}"
+    elif name in HANDBACK_TOOLS:
+        summary = _one_line(inp.get("message", ""), 200)
+        key = ""
+    else:
+        summary = _one_line(json.dumps(inp), 120)
+        key = f"{name}:{json.dumps(inp, sort_keys=True)}"
+    return Event(
+        ts,
+        "tool_use",
+        tool=name,
+        summary=summary,
+        key=key,
+        tool_id=b.get("id", ""),
+        path=path,
+        background=bool(inp.get("run_in_background")) or (name == "Bash" and bool(DETACH_RE.search(inp.get("command", "")))),
+        extra=inp if name in COORDINATION_TOOLS else None,
+    )
+
+
+def _result_text(c) -> str:
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list):
+        return " ".join(x.get("text", "") for x in c if isinstance(x, dict))
+    return ""
+
+
+def _one_line(s: str, n: int = 140) -> str:
+    s = " ".join(s.split())
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _rel(path: str, cwd: str) -> str:
+    if cwd and path.startswith(cwd.rstrip("/") + "/"):
+        return path[len(cwd.rstrip("/")) + 1 :]
+    return path
+
+
+def is_commit(ev: Event) -> bool:
+    return ev.tool == "Bash" and bool(COMMIT_RE.search(ev.key))
+
+
+def is_base_merge(ev: Event) -> bool:
+    return ev.tool == "Bash" and bool(MERGE_BASE_RE.search(ev.key))
+
+
+def iter_until(events: list[Event], now: datetime | None) -> Iterator[Event]:
+    for e in events:
+        if now is not None and e.ts > now:
+            return
+        yield e

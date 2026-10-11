@@ -1,0 +1,28 @@
+[project]
+name = "lanectl"
+version = "0.1.0"
+description = "Mission control for Claude Code subagents: see which are working, stuck or off track, live in the terminal or browser"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["textual>=0.80"]
+keywords = ["claude-code", "agents", "subagents", "tui", "monitoring", "textual"]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development",
+]
+
+[project.optional-dependencies]
+# Judge through the Anthropic API (ANTHROPIC_API_KEY) instead of `claude -p`.
+api = ["anthropic"]
+
+[project.scripts]
+lanectl = "lanectl.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lane Control</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --surface-2: #f0efec;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --hover: rgba(11,11,11,0.04);
+  --selected: rgba(42,120,214,0.08);
+  /* activity: categorical slots 1-3 (validated all-pairs), other = neutral */
+  --edit: #2a78d6;
+  --shell: #eb6834;
+  --read: #1baf7a;
+  --other: #c3c2b7;
+  /* status: fixed, never a series, always with icon + label */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  /* sequential blue for edit counts */
+  --seq-1: #9ec5f4; --seq-2: #6da7ec; --seq-3: #3987e5; --seq-4: #256abf;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface-1: #1a1a19; --surface-2: #383835;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #898781;
+    --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+    --hover: rgba(255,255,255,0.04); --selected: rgba(57,135,229,0.14);
+    --edit: #3987e5; --shell: #d95926; --read: #199e70; --other: #52514e;
+    --seq-1: #184f95; --seq-2: #256abf; --seq-3: #3987e5; --seq-4: #86b6ef;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface-1: #1a1a19; --surface-2: #383835;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #898781;
+  --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+  --hover: rgba(255,255,255,0.04); --selected: rgba(57,135,229,0.14);
+  --edit: #3987e5; --shell: #d95926; --read: #199e70; --other: #52514e;
+  --seq-1: #184f95; --seq-2: #256abf; --seq-3: #3987e5; --seq-4: #86b6ef;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--page); color: var(--text-primary);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header { padding: 14px 16px 6px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+h1 { font-size: 18px; font-weight: 600; margin: 0; }
+.meta { color: var(--text-muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); white-space: nowrap;
+}
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+.badge { font-weight: 600; padding: 1px 8px; border-radius: 4px; background: var(--surface-2); color: var(--text-primary); }
+.badge.live::before { content: "● "; color: var(--good); }
+.badge.replay::before { content: "⏪ "; }
+.controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 6px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; border-right: 1px solid var(--border); }
+.seg button:last-child { border-right: 0; }
+button {
+  font: inherit; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 10px; cursor: pointer;
+}
+.seg button { border-radius: 0; }
+button:hover { background: var(--hover); }
+button[aria-pressed="true"] { background: var(--surface-2); font-weight: 600; }
+label.check { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); }
+.scrub { display: inline-flex; align-items: center; gap: 8px; flex: 1 1 260px; min-width: 220px; }
+.scrub input { flex: 1; }
+.scrub .when { font-variant-numeric: tabular-nums; color: var(--text-secondary); min-width: 88px; }
+main { padding: 10px 16px 24px; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+#chart { display: block; width: 100%; user-select: none; touch-action: none; }
+#chart text { fill: var(--text-secondary); font-size: 12px; }
+#chart .muted { fill: var(--text-muted); }
+#chart .strong { fill: var(--text-primary); font-weight: 600; }
+#chart .row:hover .rowbg { fill: var(--hover); }
+#chart .row.sel .rowbg { fill: var(--selected); }
+#chart .row { cursor: pointer; }
+#chart .row:focus { outline: none; }
+#chart .row:focus .rowbg { stroke: var(--edit); stroke-width: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 12px; color: var(--text-secondary); border-top: 1px solid var(--border); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 8px; border-radius: 2px; display: inline-block; }
+#tip {
+  position: fixed; pointer-events: none; z-index: 10; max-width: 460px; padding: 8px 10px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18); display: none;
+}
+#tip .v { font-weight: 600; color: var(--text-primary); }
+#tip .s { color: var(--text-secondary); }
+#tip .l { color: var(--text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; margin-top: 3px; word-break: break-word; }
+#tip .key { display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 6px; }
+/* files heatmap */
+.tablewrap { overflow: auto; max-height: calc(100vh - 170px); }
+table.heat { border-collapse: separate; border-spacing: 2px; font-size: 12px; }
+table.heat th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-secondary); font-weight: 600; padding: 6px 4px; z-index: 1; white-space: nowrap; }
+table.heat th.done { color: var(--text-muted); font-weight: 400; }
+table.heat td.path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--text-primary); padding: 2px 10px 2px 8px; white-space: nowrap; position: sticky; left: 0; background: var(--surface-1); }
+table.heat td.c { width: 44px; height: 20px; border-radius: 3px; text-align: center; font-weight: 700; }
+table.heat td.c.read { color: var(--text-muted); font-weight: 400; }
+table.heat td.c.col { color: #fff; }
+table.heat td.c.col::after { content: "!"; }
+table.heat tr:hover td.path { background: var(--hover); }
+.empty { padding: 24px; color: var(--text-muted); }
+/* drawer */
+#drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(620px, 100vw); background: var(--surface-1);
+  border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,0.15); transform: translateX(105%);
+  transition: transform .18s ease; display: flex; flex-direction: column; z-index: 20;
+}
+#drawer.open { transform: none; }
+#drawer .head { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+#drawer .head h2 { margin: 0 0 4px; font-size: 16px; }
+#drawer .close { float: right; }
+#drawer .body { overflow: auto; padding: 10px 16px 24px; flex: 1; }
+.state { display: inline-flex; gap: 5px; align-items: center; font-weight: 600; }
+.kv { color: var(--text-secondary); margin: 6px 0; }
+.flag { margin: 4px 0; display: grid; grid-template-columns: 110px 1fr; gap: 8px; }
+.flag b { font-weight: 600; }
+.judge { margin: 10px 0; padding: 8px 10px; border-radius: 6px; background: var(--surface-2); }
+.feed { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; line-height: 1.55; }
+.feed div { display: grid; grid-template-columns: 62px 64px 1fr; gap: 6px; padding: 1px 0; border-bottom: 1px solid var(--grid); }
+.feed .t { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.feed .k { font-weight: 600; color: var(--text-secondary); }
+.feed .k::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; background: var(--c, transparent); }
+.feed .x { word-break: break-word; color: var(--text-primary); }
+.feed .err .x { color: var(--critical); }
+.feed .lead .x, .feed .coordinator .x { font-style: italic; }
+.feed .text .x { color: var(--text-secondary); font-style: italic; }
+h3 { font-size: 13px; margin: 16px 0 6px; color: var(--text-secondary); }
+.files span { display: inline-block; margin: 0 10px 2px 0; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+@media (max-width: 640px) {
+  header, .controls, main { padding-left: 16px; padding-right: 16px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="lane">Lane</h1>
+  <span class="meta" id="meta"></span>
+  <span class="badge" id="mode"></span>
+  <div class="chips" id="counts"></div>
+  <span class="meta" id="judgeinfo"></span>
+</header>
+<div class="controls">
+  <div class="seg" role="tablist" aria-label="View">
+    <button id="tab-timeline" aria-pressed="true">Timeline</button>
+    <button id="tab-files" aria-pressed="false">Files</button>
+  </div>
+  <div class="seg" aria-label="Time range" id="ranges">
+    <button data-range="all" aria-pressed="true">All</button>
+    <button data-range="14400">4 h</button>
+    <button data-range="3600">1 h</button>
+    <button data-range="900">15 min</button>
+  </div>
+  <label class="check"><input type="checkbox" id="hidedone"> Hide finished</label>
+  <label class="check" id="sharedwrap" hidden><input type="checkbox" id="sharedonly" checked> Shared files only</label>
+  <div class="scrub" title="Drag to replay the lane as it stood then">
+    <button id="play" aria-label="Play replay">▶</button>
+    <input type="range" id="scrub" min="0" max="1" step="60000" value="1" aria-label="Replay time">
+    <span class="when" id="when"></span>
+    <button id="live">Live</button>
+  </div>
+</div>
+<main>
+  <section id="view-timeline" class="card">
+    <svg id="chart" role="img" aria-label="Agent activity timeline"></svg>
+    <div class="legend" id="legend"></div>
+  </section>
+  <section id="view-files" class="card" hidden>
+    <div class="tablewrap" id="heat"></div>
+    <div class="legend" id="heatlegend"></div>
+  </section>
+</main>
+<aside id="drawer" aria-hidden="true">
+  <div class="head">
+    <button class="close" id="close" aria-label="Close">✕</button>
+    <h2 id="d-title"></h2>
+    <div id="d-sub" class="meta"></div>
+  </div>
+  <div class="body" id="d-body"></div>
+</aside>
+<div id="tip" role="tooltip"></div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const el = (tag, attrs = {}, text) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (text != null) n.textContent = text;
+  return n;
+};
+const svgEl = (tag, attrs = {}, text) => {
+  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (text != null) n.textContent = text;
+  return n;
+};
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const hm = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const hms = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const dur = (s) => {
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s / 60) + "m";
+  return Math.floor(s / 3600) + "h" + String(Math.floor((s % 3600) / 60)).padStart(2, "0") + "m";
+};
+
+const KIND = { edit: ["Edit", "--edit"], shell: ["Shell", "--shell"], read: ["Read / search", "--read"], other: ["Other", "--other"] };
+const SEV = {
+  bad: ["Needs you", "--critical"], warn: ["Check", "--warning"], ok: ["Working", "--good"],
+  done: ["Done", "--text-muted"], info: ["Note", "--text-muted"],
+};
+const VERDICT = {
+  on_track: ["✓", "On track", "--good"], drifting: ["↯", "Drifting", "--warning"],
+  stuck: ["⟳", "Stuck", "--critical"], unclear: ["?", "Unclear", "--text-muted"],
+};
+
+const S = {
+  data: null, at: null, view: "timeline", range: "all", window: null, follow: true,
+  hideDone: false, sharedOnly: true, selected: null, playing: false, inflight: false,
+};
+const LABEL_W = 300, ROW_H = 30, TOP = 44, LEAD_H = 28, PAD_R = 16;
+
+// ---------------------------------------------------------------- data
+async function load() {
+  if (S.inflight) return;
+  S.inflight = true;
+  try {
+    const q = S.at ? "?at=" + S.at : "";
+    const r = await fetch("/api/state" + q, { cache: "no-store" });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    S.data = d;
+    render();
+    if (S.selected) loadDrawer(S.selected);
+  } catch (e) {
+    $("meta").textContent = "Lost connection to lanectl: " + e.message;
+  } finally {
+    S.inflight = false;
+  }
+}
+
+// ---------------------------------------------------------------- header
+function renderHeader() {
+  const d = S.data;
+  $("lane").textContent = d.lane || "Lane";
+  document.title = (d.lane ? d.lane + " · " : "") + "Lane Control";
+  $("meta").textContent = `${d.project} · session ${d.session.slice(0, 8)}`;
+  const mode = $("mode");
+  mode.className = "badge " + (d.live ? "live" : "replay");
+  mode.textContent = d.live ? "Live" : "Replay " + hm(d.now);
+  const counts = { bad: 0, warn: 0, ok: 0, done: 0 };
+  d.agents.forEach((a) => (counts[a.severity] = (counts[a.severity] || 0) + 1));
+  const box = $("counts");
+  box.replaceChildren();
+  for (const k of ["bad", "warn", "ok", "done"]) {
+    if (!counts[k]) continue;
+    const c = el("span", { class: "chip" });
+    const dot = el("span", { class: "dot" });
+    dot.style.background = `var(${SEV[k][1]})`;
+    c.append(dot, document.createTextNode(`${counts[k]} ${SEV[k][0].toLowerCase()}`));
+    box.append(c);
+  }
+  const j = d.judge;
+  $("judgeinfo").textContent = !j ? "" : j.backend === "off" ? "judge off"
+    : `judge ${j.model.replace("claude-", "")} via ${j.backend} · $${j.spent.toFixed(3)} of $${j.budget.toFixed(2)}`;
+  const sc = $("scrub");
+  if (d.span) {
+    sc.min = d.span[0]; sc.max = d.span[1];
+    if (!S.at) sc.value = d.span[1];
+  }
+  $("when").textContent = hm(S.at || d.now);
+}
+
+// ---------------------------------------------------------------- timeline
+function agentsShown() {
+  return S.data.agents.filter((a) => !(S.hideDone && a.severity === "done"));
+}
+
+function viewWindow() {
+  const d = S.data;
+  const end = S.at ? +S.at : d.span ? d.span[1] : d.now;
+  const start = d.span ? d.span[0] : end - 3600e3;
+  if (S.window && !S.follow) return S.window;
+  if (S.range === "all") return [start, end];
+  const span = +S.range * 1000;
+  return [Math.max(start, end - span), end];
+}
+
+function niceStep(ms, target) {
+  const steps = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200].map((s) => s * 1000);
+  return steps.find((s) => ms / s <= target) || steps[steps.length - 1];
+}
+
+function renderTimeline() {
+  const svg = $("chart");
+  const d = S.data;
+  const agents = agentsShown();
+  const W = svg.clientWidth || svg.parentNode.clientWidth;
+  const H = TOP + LEAD_H + agents.length * ROW_H + 12;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("height", H);
+  svg.replaceChildren();
+  const [t0, t1] = viewWindow();
+  S.window = [t0, t1];
+  const x = (t) => LABEL_W + ((t - t0) / Math.max(1, t1 - t0)) * (W - LABEL_W - PAD_R);
+  const inView = (a, b) => b >= t0 && a <= t1;
+  const clipX = (t) => Math.max(LABEL_W, Math.min(W - PAD_R, x(t)));
+
+  // grid + axis
+  const step = niceStep(t1 - t0, 9);
+  const g = svgEl("g");
+  for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) {
+    const xx = x(t);
+    g.append(svgEl("line", { x1: xx, x2: xx, y1: TOP - 8, y2: H - 6, stroke: css("--grid"), "stroke-width": 1 }));
+    g.append(svgEl("text", { x: xx, y: TOP - 14, "text-anchor": "middle", class: "muted" }, hm(t)));
+  }
+  svg.append(g);
+
+  // lead row
+  const ly = TOP + LEAD_H / 2;
+  svg.append(svgEl("text", { x: 12, y: ly + 4, class: "strong" }, "Lead"));
+  svg.append(svgEl("text", { x: 52, y: ly + 4, class: "muted" }, "▼ merge  ◆ message  + spawn  ■ stop"));
+  svg.append(svgEl("line", { x1: LABEL_W, x2: W - PAD_R, y1: ly, y2: ly, stroke: css("--baseline"), "stroke-width": 1 }));
+  for (const m of d.lead) {
+    if (!inView(m.t, m.t)) continue;
+    const glyph = { merge: "▼", msg: "◆", spawn: "+", stop: "■" }[m.k];
+    const t = svgEl("text", { x: x(m.t), y: ly + 4, "text-anchor": "middle", class: m.k === "merge" ? "strong" : "" }, glyph);
+    t.dataset.tip = JSON.stringify({ v: { merge: "Merge", msg: "Lead message", spawn: "Spawned agent", stop: "Stopped agent" }[m.k], s: hms(m.t), l: [m.label] });
+    svg.append(t);
+  }
+
+  // rows
+  agents.forEach((a, i) => {
+    const y0 = TOP + LEAD_H + i * ROW_H, cy = y0 + ROW_H / 2;
+    const row = svgEl("g", { class: "row" + (S.selected === a.id ? " sel" : ""), tabindex: 0, role: "button", "aria-label": `${a.title}: ${a.state}` });
+    row.dataset.id = a.id;
+    row.append(svgEl("rect", { class: "rowbg", x: 0, y: y0, width: W, height: ROW_H, fill: "transparent" }));
+    // label: state icon + card + title; verdict at the right edge of the label column
+    const sev = SEV[a.severity];
+    const icon = svgEl("text", { x: 12, y: cy + 4 }, a.icon);
+    icon.style.fill = `var(${sev[1]})`;
+    row.append(icon);
+    const numbered = a.label.startsWith("#");
+    const title = numbered ? a.title.replace(a.label, "").trim() : a.title;
+    if (numbered) row.append(svgEl("text", { x: 32, y: cy + 4, class: a.severity === "done" ? "muted" : "strong" }, a.label));
+    const tx = numbered ? 84 : 32, room = numbered ? 26 : 33;
+    row.append(svgEl("text", { x: tx, y: cy + 4, class: numbered ? "muted" : (a.severity === "done" ? "muted" : "strong") }, title.length > room ? title.slice(0, room - 1) + "…" : title));
+    if (a.judge) {
+      const v = VERDICT[a.judge.verdict] || VERDICT.unclear;
+      const vt = svgEl("text", { x: LABEL_W - 12, y: cy + 4, "text-anchor": "end" }, `${v[0]} ${v[1]}`);
+      vt.style.fill = a.severity === "done" ? css("--text-muted") : `var(${v[2]})`;
+      vt.dataset.tip = JSON.stringify({ v: v[1], s: "Judge, as of " + hm(a.judge.as_of), l: [a.judge.doing, a.judge.concern].filter(Boolean) });
+      row.append(vt);
+    }
+    // lifetime baseline
+    if (a.start != null) {
+      const end = a.severity === "done" ? a.end : (S.at ? +S.at : d.now);
+      if (inView(a.start, end)) row.append(svgEl("line", { x1: clipX(a.start), x2: clipX(end), y1: cy, y2: cy, stroke: css("--baseline"), "stroke-width": 1 }));
+      // silent stretches past the idle threshold
+      const pts = a.segments.map((s) => [s.t0, s.t1]).concat(a.marks.map((m) => [m.t, m.t])).sort((p, q) => p[0] - q[0]);
+      let last = a.start;
+      const gaps = [];
+      for (const [s0, s1] of pts) {
+        if (s0 - last > d.idle_s * 1000) gaps.push([last, s0]);
+        last = Math.max(last, s1);
+      }
+      if (a.severity !== "done" && end - last > d.idle_s * 1000) gaps.push([last, end]);
+      for (const [g0, g1] of gaps) {
+        if (!inView(g0, g1)) continue;
+        const ln = svgEl("line", { x1: clipX(g0), x2: clipX(g1), y1: cy, y2: cy, stroke: css("--serious"), "stroke-width": 2, "stroke-linecap": "round" });
+        ln.dataset.tip = JSON.stringify({ v: "Silent " + dur((g1 - g0) / 1000), s: `${hm(g0)} – ${hm(g1)}`, l: ["No tool calls in this stretch"] });
+        row.append(ln);
+      }
+    }
+    // Shell runs can last many minutes; draw them thinner and first so edits and reads made
+    // in between stay visible on top.
+    const ordered = a.segments.filter((s) => s.k === "shell").concat(a.segments.filter((s) => s.k !== "shell"));
+    for (const s of ordered) {
+      if (!inView(s.t0, s.t1)) continue;
+      const xa = clipX(s.t0), xb = clipX(s.t1);
+      const h = s.k === "shell" ? 6 : 12;
+      const r = svgEl("rect", { x: xa, y: cy - h / 2, width: Math.max(3, xb - xa), height: h, rx: 2 });
+      r.style.fill = `var(${KIND[s.k][1]})`;
+      r.dataset.tip = JSON.stringify({ key: KIND[s.k][1], v: `${KIND[s.k][0]} · ${dur((s.t1 - s.t0) / 1000)}`, s: `${hms(s.t0)} · ${s.n} call${s.n > 1 ? "s" : ""}`, l: s.labels });
+      row.append(r);
+    }
+    for (const m of a.marks) {
+      if (!inView(m.t, m.t)) continue;
+      const mx = x(m.t);
+      let n;
+      if (m.k === "report") {
+        n = svgEl("circle", { cx: mx, cy, r: 5, stroke: css("--surface-1"), "stroke-width": 2 });
+        n.style.fill = "var(--good)";
+      } else if (m.k === "error") {
+        n = svgEl("rect", { x: mx - 1, y: cy - 9, width: 2, height: 18 });
+        n.style.fill = "var(--critical)";
+      } else {
+        n = svgEl("text", { x: mx, y: cy - 8, "text-anchor": "middle", class: "strong" }, "◆");
+      }
+      n.dataset.tip = JSON.stringify({ v: { report: "✓ Reported", error: "✗ Tool error", lead: "◆ Lead message" }[m.k], s: hms(m.t), l: [m.label] });
+      row.append(n);
+    }
+    svg.append(row);
+  });
+
+  // now / replay line
+  const nowT = S.at ? +S.at : d.now;
+  if (inView(nowT, nowT)) {
+    svg.append(svgEl("line", { x1: x(nowT), x2: x(nowT), y1: TOP - 8, y2: H - 6, stroke: css("--text-secondary"), "stroke-width": 1 }));
+  }
+  // crosshair
+  S.cross = svgEl("line", { y1: TOP - 8, y2: H - 6, stroke: css("--text-muted"), "stroke-width": 1, visibility: "hidden" });
+  S.crossLabel = svgEl("text", { y: 12, "text-anchor": "middle", class: "strong", visibility: "hidden" });
+  svg.append(S.cross, S.crossLabel);
+  S.xinv = (px) => t0 + ((px - LABEL_W) / (W - LABEL_W - PAD_R)) * (t1 - t0);
+}
+
+function renderLegend() {
+  const lg = $("legend");
+  lg.replaceChildren();
+  for (const [k, [name, v]] of Object.entries(KIND)) {
+    const s = el("span"), sw = el("span", { class: "sw" });
+    sw.style.background = `var(${v})`;
+    s.append(sw, document.createTextNode(name));
+    lg.append(s);
+  }
+  const extra = [["--serious", "Silent past the idle threshold", "line"], ["--good", "Reported", "dot"], ["--critical", "Tool error", "tick"]];
+  for (const [v, name, shape] of extra) {
+    const s = el("span"), sw = el("span", { class: "sw" });
+    sw.style.background = `var(${v})`;
+    if (shape === "line") sw.style.height = "2px";
+    if (shape === "dot") { sw.style.width = "9px"; sw.style.height = "9px"; sw.style.borderRadius = "50%"; }
+    if (shape === "tick") { sw.style.width = "2px"; sw.style.height = "12px"; }
+    s.append(sw, document.createTextNode(name));
+    lg.append(s);
+  }
+  lg.append(el("span", {}, "◆ Lead message"), el("span", {}, "Scroll to zoom · drag to pan · double-click to fit"));
+}
+
+// ---------------------------------------------------------------- files heatmap
+function seqColor(n) {
+  return n >= 10 ? "--seq-4" : n >= 4 ? "--seq-3" : n >= 2 ? "--seq-2" : "--seq-1";
+}
+
+function renderFiles() {
+  const f = S.data.files;
+  const byId = Object.fromEntries(S.data.agents.map((a) => [a.id, a]));
+  const editors = new Map();
+  for (const [fi, ai, ed] of f.cells) if (ed) editors.set(fi, (editors.get(fi) || 0) + 1);
+  const rows = f.files.map((p, i) => [p, i]).filter(([, i]) => !S.sharedOnly || (editors.get(i) || 0) >= 2);
+  const agentIdx = f.agents.map((id, i) => [id, i]).filter(([id]) => byId[id] && !(S.hideDone && byId[id].severity === "done"));
+  const wrap = $("heat");
+  wrap.replaceChildren();
+  if (!rows.length) {
+    wrap.append(el("div", { class: "empty" }, S.sharedOnly ? "No file has been edited by two agents." : "No edits yet."));
+  } else {
+    const cell = new Map(f.cells.map(([fi, ai, ed, rd, col]) => [fi + ":" + ai, { ed, rd, col }]));
+    const t = el("table", { class: "heat" });
+    const hr = el("tr");
+    hr.append(el("th", {}, `${rows.length} file${rows.length > 1 ? "s" : ""}`));
+    for (const [id] of agentIdx) {
+      const th = el("th", { class: byId[id].severity === "done" ? "done" : "", title: byId[id].title }, byId[id].label);
+      hr.append(th);
+    }
+    t.append(hr);
+    for (const [p, fi] of rows) {
+      const tr = el("tr");
+      tr.append(el("td", { class: "path" }, p));
+      for (const [id, ai] of agentIdx) {
+        const c = cell.get(fi + ":" + ai);
+        const td = el("td", { class: "c" });
+        if (c && c.ed) {
+          td.style.background = `var(${seqColor(c.ed)})`;
+          if (c.col) td.classList.add("col");
+          td.dataset.tip = JSON.stringify({ v: `${c.ed} edit${c.ed > 1 ? "s" : ""}`, s: `${byId[id].title}`, l: [p, c.col ? "! Edited while another agent was also editing it: expect a merge conflict" : ""].filter(Boolean) });
+        } else if (c && c.rd) {
+          td.classList.add("read");
+          td.textContent = "··";
+          td.dataset.tip = JSON.stringify({ v: `${c.rd} read${c.rd > 1 ? "s" : ""}`, s: byId[id].title, l: [p] });
+        }
+        tr.append(td);
+      }
+      t.append(tr);
+    }
+    wrap.append(t);
+  }
+  const lg = $("heatlegend");
+  lg.replaceChildren();
+  for (const [n, v] of [[1, "--seq-1"], [2, "--seq-2"], [4, "--seq-3"], [10, "--seq-4"]]) {
+    const s = el("span"), sw = el("span", { class: "sw" });
+    sw.style.background = `var(${v})`;
+    s.append(sw, document.createTextNode(`${n}+ edits`));
+    lg.append(s);
+  }
+  lg.append(el("span", {}, "·· read only"), el("span", {}, "! edited concurrently by two agents (merge-conflict risk)"));
+}
+
+// ---------------------------------------------------------------- drawer
+async function loadDrawer(id) {
+  const a = S.data.agents.find((x) => x.id === id);
+  if (!a) return;
+  $("d-title").textContent = a.title;
+  $("d-sub").textContent = `${a.model} · ${a.id}${a.worktree ? " · " + a.worktree.split("/").slice(-1)[0] : ""}`;
+  let feed = [];
+  try {
+    feed = await (await fetch(`/api/agent/${encodeURIComponent(id)}` + (S.at ? "?at=" + S.at : ""), { cache: "no-store" })).json();
+  } catch (e) { /* keep the previous feed */ }
+  const b = $("d-body");
+  const keepBottom = b.scrollTop + b.clientHeight >= b.scrollHeight - 8;
+  b.replaceChildren();
+  const st = el("div", { class: "state" });
+  st.style.color = `var(${SEV[a.severity][1]})`;
+  st.textContent = `${a.icon} ${a.state}`;
+  b.append(st, el("div", { class: "kv" }, a.detail));
+  b.append(el("div", { class: "kv" }, `running ${dur(a.run_s)} · quiet ${dur(a.quiet_s)} · ${a.commits} commits · ${a.edits.length} files edited · ${a.lead_msgs} lead messages · context ${Math.round(a.ctx / 1000)}k`));
+  if (a.judge) {
+    const v = VERDICT[a.judge.verdict] || VERDICT.unclear;
+    const j = el("div", { class: "judge" });
+    const head = el("div", { class: "state" }, `${v[0]} ${v[1]}`);
+    head.style.color = `var(${v[2]})`;
+    j.append(head, el("div", {}, a.judge.doing));
+    if (a.judge.concern) j.append(el("div", { class: "kv" }, a.judge.concern));
+    j.append(el("div", { class: "meta" }, "Judge, as of " + hm(a.judge.as_of)));
+    b.append(j);
+  }
+  if (a.flags.length) {
+    b.append(el("h3", {}, "Flags"));
+    for (const f of a.flags) {
+      const row = el("div", { class: "flag" });
+      const code = el("b", {}, (f.severity === "bad" ? "⛔ " : f.severity === "warn" ? "⚠ " : "· ") + f.code);
+      code.style.color = `var(${SEV[f.severity][1]})`;
+      row.append(code, el("span", {}, f.detail));
+      b.append(row);
+    }
+  }
+  if (a.procs.length) {
+    b.append(el("h3", {}, "Running in its worktree"));
+    for (const p of a.procs) b.append(el("div", { class: "kv" }, `${p.orphan ? "👻 orphaned " : "▶ "}${p.pid} ${p.etime}  ${p.cmd}`));
+  }
+  if (a.edits.length) {
+    b.append(el("h3", {}, "Files edited"));
+    const fl = el("div", { class: "files" });
+    for (const p of a.edits) fl.append(el("span", { title: a.off_brief.includes(p) ? "not named in the brief" : "" }, p + (a.off_brief.includes(p) ? " ⚑" : "")));
+    b.append(fl);
+  }
+  b.append(el("h3", {}, "Activity"));
+  const fd = el("div", { class: "feed" });
+  for (const r of feed) {
+    const row = el("div", { class: r.err ? "err" : r.kind });
+    const k = el("span", { class: "k" }, r.kind === "lead" ? "lead →" : r.kind === "coordinator" ? "lead" : r.tool || r.kind);
+    if (KIND[r.cat]) k.style.setProperty("--c", `var(${KIND[r.cat][1]})`);
+    row.append(el("span", { class: "t" }, hms(r.t)), k, el("span", { class: "x" }, r.text + (r.bg ? "  [background]" : "")));
+    fd.append(row);
+  }
+  b.append(fd);
+  if (keepBottom) b.scrollTop = b.scrollHeight;
+}
+
+function openDrawer(id) {
+  S.selected = id;
+  $("drawer").classList.add("open");
+  $("drawer").setAttribute("aria-hidden", "false");
+  loadDrawer(id).then(() => ($("d-body").scrollTop = $("d-body").scrollHeight));
+  render();
+}
+
+function closeDrawer() {
+  S.selected = null;
+  $("drawer").classList.remove("open");
+  $("drawer").setAttribute("aria-hidden", "true");
+  render();
+}
+
+// ---------------------------------------------------------------- render + events
+function render() {
+  if (!S.data) return;
+  renderHeader();
+  if (S.view === "timeline") renderTimeline();
+  else renderFiles();
+}
+
+function showTip(target, ev) {
+  const tip = $("tip");
+  if (!target || !target.dataset || !target.dataset.tip) { tip.style.display = "none"; return; }
+  const d = JSON.parse(target.dataset.tip);
+  tip.replaceChildren();
+  const v = el("div", { class: "v" });
+  if (d.key) { const k = el("span", { class: "key" }); k.style.background = `var(${d.key})`; v.append(k); }
+  v.append(document.createTextNode(d.v));
+  tip.append(v);
+  if (d.s) tip.append(el("div", { class: "s" }, d.s));
+  for (const l of d.l || []) tip.append(el("div", { class: "l" }, l));
+  tip.style.display = "block";
+  const r = tip.getBoundingClientRect();
+  let left = ev.clientX + 14, top = ev.clientY + 14;
+  if (left + r.width > innerWidth - 8) left = ev.clientX - r.width - 14;
+  if (top + r.height > innerHeight - 8) top = ev.clientY - r.height - 14;
+  tip.style.left = Math.max(8, left) + "px";
+  tip.style.top = Math.max(8, top) + "px";
+}
+
+document.addEventListener("pointermove", (ev) => {
+  const t = ev.target.closest ? ev.target.closest("[data-tip]") : null;
+  showTip(t, ev);
+});
+
+const chart = $("chart");
+chart.addEventListener("pointermove", (ev) => {
+  if (!S.xinv) return;
+  const r = chart.getBoundingClientRect();
+  const px = ((ev.clientX - r.left) / r.width) * chart.viewBox.baseVal.width;
+  const show = px >= LABEL_W ? "visible" : "hidden";
+  S.cross.setAttribute("visibility", show);
+  S.crossLabel.setAttribute("visibility", show);
+  S.cross.setAttribute("x1", px); S.cross.setAttribute("x2", px);
+  S.crossLabel.setAttribute("x", px);
+  S.crossLabel.textContent = hm(S.xinv(px));
+  if (S.drag) {
+    const dt = S.xinv(S.drag.px) - S.xinv(px);
+    S.window = [S.drag.w[0] + dt, S.drag.w[1] + dt];
+    S.follow = false;
+    renderTimeline();
+  }
+});
+chart.addEventListener("pointerleave", () => { if (S.cross) { S.cross.setAttribute("visibility", "hidden"); S.crossLabel.setAttribute("visibility", "hidden"); } });
+chart.addEventListener("pointerdown", (ev) => {
+  const r = chart.getBoundingClientRect();
+  const px = ((ev.clientX - r.left) / r.width) * chart.viewBox.baseVal.width;
+  if (px >= LABEL_W) { S.drag = { px, w: S.window.slice(), moved: false, x0: ev.clientX }; chart.setPointerCapture(ev.pointerId); }
+});
+chart.addEventListener("pointerup", (ev) => {
+  const wasDrag = S.drag && Math.abs(ev.clientX - S.drag.x0) > 3;
+  S.drag = null;
+  if (wasDrag) return;
+  const row = ev.target.closest(".row");
+  if (row) openDrawer(row.dataset.id);
+});
+chart.addEventListener("keydown", (ev) => {
+  const row = ev.target.closest && ev.target.closest(".row");
+  if (row && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); openDrawer(row.dataset.id); }
+});
+chart.addEventListener("wheel", (ev) => {
+  if (!S.xinv) return;
+  ev.preventDefault();
+  const r = chart.getBoundingClientRect();
+  const px = ((ev.clientX - r.left) / r.width) * chart.viewBox.baseVal.width;
+  const center = S.xinv(Math.max(LABEL_W, px));
+  const k = Math.exp(ev.deltaY * 0.0015);
+  const [a, b] = S.window;
+  const span = Math.max(60e3, (b - a) * k);
+  const frac = (center - a) / (b - a);
+  S.window = [center - span * frac, center + span * (1 - frac)];
+  S.follow = false;
+  renderTimeline();
+}, { passive: false });
+chart.addEventListener("dblclick", () => { S.follow = true; S.window = null; renderTimeline(); });
+
+$("tab-timeline").onclick = () => setView("timeline");
+$("tab-files").onclick = () => setView("files");
+function setView(v) {
+  S.view = v;
+  $("tab-timeline").setAttribute("aria-pressed", v === "timeline");
+  $("tab-files").setAttribute("aria-pressed", v === "files");
+  $("view-timeline").hidden = v !== "timeline";
+  $("view-files").hidden = v !== "files";
+  $("sharedwrap").hidden = v !== "files";
+  render();
+}
+for (const b of document.querySelectorAll("#ranges button")) {
+  b.onclick = () => {
+    S.range = b.dataset.range; S.follow = true; S.window = null;
+    document.querySelectorAll("#ranges button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    render();
+  };
+}
+$("hidedone").onchange = (e) => { S.hideDone = e.target.checked; render(); };
+$("sharedonly").onchange = (e) => { S.sharedOnly = e.target.checked; render(); };
+$("scrub").oninput = (e) => { S.at = String(Math.round(+e.target.value)); S.follow = true; S.window = null; $("when").textContent = hm(+S.at); load(); };
+$("live").onclick = () => { S.at = null; S.playing = false; $("play").textContent = "▶"; load(); };
+$("play").onclick = () => {
+  S.playing = !S.playing;
+  $("play").textContent = S.playing ? "❚❚" : "▶";
+  if (S.playing && !S.at && S.data && S.data.span) S.at = String(S.data.span[0]);
+};
+$("close").onclick = closeDrawer;
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+addEventListener("resize", () => render());
+
+setInterval(() => {
+  if (S.playing && S.data && S.data.span) {
+    const next = +S.at + 120e3;
+    if (next >= S.data.span[1]) { S.playing = false; $("play").textContent = "▶"; }
+    S.at = String(Math.min(next, S.data.span[1]));
+    $("scrub").value = S.at;
+    load();
+  }
+}, 500);
+setInterval(() => { if (!S.playing) load(); }, 3000);
+
+const params = new URLSearchParams(location.search);
+if (params.get("at")) S.at = String(Date.parse(params.get("at")));
+renderLegend();
+if (location.hash === "#files") setView("files");
+load();
+</script>
+</body>
+</html>
