@@ -16,7 +16,7 @@ A made-up run from <code>tracon --demo</code>, sped up.</sub>
 
 ```sh
 uvx tracon --demo     # look around a made-up run; no Claude Code session needed
-uvx tracon            # watch your newest Claude Code session that has subagents
+uvx tracon            # watch the Claude Code session in the next split, else your newest with subagents
 ```
 
 You dispatched six agents an hour ago. One has been waiting 40 minutes on a permission prompt
@@ -32,8 +32,8 @@ are on a collision course in the same file. Run it in a split next to your sessi
 - **Read-only and local.** It reads the transcripts Claude Code already writes to disk and
   never writes to your repository. It sends something to a session only when you press `n`.
   See [What it touches](#what-it-touches).
-- **No setup.** No hooks, no config, no account. Point it at a project, or let it find the
-  newest session.
+- **No setup.** No hooks, no config, no account. Start it in a split next to your session
+  and it finds that session.
 - **Optional LLM judge.** A small model checks each busy agent against its brief, for about
   a tenth of a cent a check, with a hard per-run budget. `--no-judge` turns it off.
 
@@ -106,7 +106,7 @@ uv tool install --editable .
 ## Use
 
 ```sh
-cd your-project && tracon     # newest session with subagents in this project (or anywhere)
+cd your-project && tracon     # the session in the next split, else the newest in this project (or anywhere)
 tracon --demo                 # a made-up run, to look around
 tracon web                    # browser view only
 tracon --list                 # recent sessions that spawned subagents
@@ -118,6 +118,17 @@ tracon --once --json          # snapshot as JSON (for scripts and status bars)
 
 A good layout: your orchestrating session on one side, `tracon` in a split next to it
 (in Ghostty, `cmd+d`).
+
+Without `--session`, tracon picks, in order:
+
+1. the Claude Code session in a split of the same tab (Ghostty 1.3+ on macOS), matched by the
+   name Claude Code gives its terminal, even before it has started any subagents;
+2. the newest session with subagents in this folder's project, or in the nearest parent folder
+   that has one;
+3. the newest session with subagents anywhere.
+
+It keeps checking: when the session in the next split changes, or a new session with subagents
+takes the top spot, tracon switches to it. Picking a session with `s` stops that.
 
 ### Terminal keys
 
@@ -133,7 +144,8 @@ A good layout: your orchestrating session on one side, `tracon` in a split next 
 | `n` | nudge the lead about the selected agent: sends a note with its state, flags and what to do (live only) |
 | `[` `]` / `{` `}` | rewind / forward 5 / 30 min (enters replay) · `space` play · `l` back to live |
 | `o` / `c` | open the agent's worktree in a new terminal window (Ghostty if installed) / copy its path |
-| `h` / `s` / `q` | hide finished agents / next session / quit |
+| `s` | sessions, last active first: pick one to watch (stops following the next split and new sessions) |
+| `h` / `q` | hide finished agents / quit |
 
 ### Browser view
 
@@ -299,8 +311,8 @@ messages from your own user on macOS and Linux.
 
 | Flag | Default | |
 |---|---|---|
-| `--project PATH` | current dir | which project's sessions to watch |
-| `--session ID` | newest | session id or prefix |
+| `--project PATH` | current dir | which project's sessions to watch (its parent folders too, without this) |
+| `--session ID` | next split, else newest | session id or prefix |
 | `--at TIME` | live | replay as of a local time (`07:20` or `2026-10-11 07:20`) |
 | `--once` | | print one snapshot and exit (no TUI) |
 | `--json` | | output snapshot as JSON (for scripts and status bars) |
@@ -323,8 +335,8 @@ tracon is read-only. This is everything it does outside its own process:
 
 | | |
 |---|---|
-| **Reads** | Transcripts in `~/.claude/projects/`; `~/.claude/sessions/<pid>.json` to find a running lead's inbox (never the `*.key` auth files) |
-| **Runs** | `lsof` (macOS) or `/proc` (Linux), `ps`, and read-only `git` (`status`, `rev-parse`, `rev-list`, `branch`) in each agent's worktree |
+| **Reads** | Transcripts in `~/.claude/projects/`; `~/.claude/sessions/<pid>.json` to find running sessions and a lead's inbox (never the `*.key` auth files) |
+| **Runs** | `lsof` (macOS) or `/proc` (Linux), `ps`, and read-only `git` (`status`, `rev-parse`, `rev-list`, `branch`) in each agent's worktree. In Ghostty on macOS, `osascript` asking Ghostty for its tabs' terminal titles and folders, to find the session in the next split (it sends Ghostty nothing else) |
 | **Writes** | `~/.cache/tracon/` (judge verdicts and your dismissals). Nothing in your repository or `~/.claude/` |
 | **Sends** | One message to the lead's inbox socket when you press `n`, never on its own and never to a subagent. Judge checks to Anthropic (or `claude -p`), unless `--no-judge` |
 | **Listens** | The browser view, on `127.0.0.1` only, once you open it (`w` or `tracon web`) |
@@ -350,14 +362,15 @@ from both.
 ```
 tracon/
   transcript.py  JSONL -> compact events (all knowledge of the transcript format lives here)
-  session.py     find sessions, track the lead and its agents
+  session.py     find sessions and choose one, track the lead and its agents
+  ghostty.py     which Claude Code session is in the split next to tracon
   probe.py       live processes and git state per worktree
   signals.py     one agent -> state + flags (pure, testable)
   lane.py        whole-run view: file collisions, judge results, assess_all()
   judge.py       the optional LLM check, its scheduling, budget and cache
   advice.py      the nudge `n` sends the lead
   demo.py        the made-up run behind `--demo`
-  inbox.py       find a live session's inbox socket and send to it
+  inbox.py       the live-session registry; find a session's inbox socket and send to it
   app.py         Textual TUI
   web.py         local HTTP server + JSON API; static/index.html is the page
   cli.py         entry point
@@ -367,7 +380,8 @@ tracon/
 
 - Transcript files are Claude Code internals, not a public API. A format change may break
   parsing; the fix belongs in `transcript.py`. The same goes for the session registry and
-  inbox socket used by `n`, in `inbox.py`.
+  inbox socket used by `n`, in `inbox.py`, and for the terminal title Claude Code sets
+  (`<glyph> <name>`), which is how the session in the next Ghostty split is found.
 - Developed on macOS; tests run on macOS and Linux. On Linux, processes are read from `/proc`
   (no `lsof` needed), notifications use `notify-send`, copy uses `wl-copy`, `xclip` or `xsel`
   (else the terminal's OSC 52), and `o` opens Ghostty or `x-terminal-emulator`. Windows isn't

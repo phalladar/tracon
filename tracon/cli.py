@@ -10,10 +10,11 @@ from datetime import datetime, timezone
 from importlib.metadata import version
 from urllib.parse import quote
 
+from . import ghostty
 from .judge import DEFAULT_MODEL, Judge
 from .lane import assess_all
 from .probe import Prober
-from .session import Session, find_sessions
+from .session import Chooser, Session, find_sessions
 from .signals import Status, Thresholds, fmt_duration
 
 
@@ -34,8 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="tracon", description="Watch Claude Code subagents: who is working, stuck or off track.")
     p.add_argument("--version", action="version", version=f"%(prog)s {version('tracon')}")
     p.add_argument("command", nargs="?", choices=["tui", "web"], default="tui", help="tui (default) or web: serve the browser view only")
-    p.add_argument("--project", "-p", help="project path (default: any project; newest session wins)")
-    p.add_argument("--session", "-s", help="session id or prefix (default: the most recently active)")
+    p.add_argument("--project", "-p", help="project path (default: this folder's project, else any; newest session wins)")
+    p.add_argument("--session", "-s", help="session id or prefix (default: the one in the next Ghostty split, else the most recently active)")
     p.add_argument("--at", help="replay as of this local time, e.g. '2026-10-11 01:30' or '01:30'")
     p.add_argument("--list", action="store_true", help="list recent sessions that have subagents")
     p.add_argument("--once", action="store_true", help="print one snapshot and exit (no TUI)")
@@ -62,22 +63,24 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.json and not args.once:
         parser.error("--json needs --once")
-    demo = None
+    demo = chooser = None
     if args.demo:
         from .demo import Demo
 
         demo = Demo().start()
         refs = [demo.ref]
+    elif args.session:
+        refs = [r for r in find_sessions(args.project) if r.session_id.startswith(args.session)]
     else:
-        # Inside a project with lanes, prefer its sessions; otherwise the newest anywhere.
-        refs = find_sessions(args.project) if args.project else (find_sessions(os.getcwd()) or find_sessions())
+        chooser = Chooser(cwd=os.getcwd(), project=args.project, ignore_prefix=args.title_prefix)
+        if ghostty.available() and sys.stdout.isatty() and not args.list:
+            chooser.terminal = ghostty.find_self(None if args.no_title else _write)
+        refs = chooser.refs()
     if args.list:
         for r in refs[:20]:
             when = datetime.fromtimestamp(r.mtime).strftime("%Y-%m-%d %H:%M")
             print(f"{r.session_id}  {when}  {r.n_agents:3} agents  {r.project_name}")
         return 0
-    if args.session:
-        refs = [r for r in refs if r.session_id.startswith(args.session)]
     if not refs:
         print("No Claude Code session with subagents found." + (" Try --list." if args.session else ""), file=sys.stderr)
         return 1
@@ -106,7 +109,8 @@ def main(argv: list[str] | None = None) -> int:
     from .app import LaneApp
 
     app = LaneApp(refs, at=at, thresholds=th, notify=args.notify and not args.no_notify and demo is None, judge=judge, web_port=args.port,
-                  title_prefix=None if args.no_title else args.title_prefix, prober=demo.prober if demo else None)
+                  title_prefix=None if args.no_title else args.title_prefix, prober=demo.prober if demo else None,
+                  chooser=chooser)
     try:
         app.run()
     finally:
@@ -114,6 +118,11 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write("\x1b[23;2t")  # restore the title saved at start
             sys.stdout.flush()
     return 0
+
+
+def _write(seq: str) -> None:
+    sys.stdout.write(seq)
+    sys.stdout.flush()
 
 
 def snapshot_json(session: Session, statuses: dict[str, Status], at: datetime | None = None) -> dict:

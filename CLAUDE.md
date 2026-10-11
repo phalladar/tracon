@@ -24,7 +24,14 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
 - `transcript.py`: JSONL to `Event`s, read incrementally by byte offset. **The only module that
   knows the transcript format.** Format fixes go here and nowhere else.
 - `session.py`: session discovery (`find_sessions`), `Session` = lead `Transcript` + `Agent`s,
-  plus lead-side facts (messages to an agent, `TaskStop`, merges, lane name).
+  plus lead-side facts (messages to an agent, `TaskStop`, merges, lane name). `Chooser` picks the
+  session when `--session` isn't given: the one in the next Ghostty split (`ghostty.py`), else the
+  newest in the cwd's project or a parent's, else anywhere. The app re-asks it every 5 s to follow
+  the split and new sessions, until the user picks one with `s`.
+- `ghostty.py`: asks Ghostty (1.3+, AppleScript) for every terminal's tab, title and folder.
+  tracon finds its own terminal by briefly titling it with a marker (`find_self`, title stack
+  pushed and popped around it); `pick_neighbour` (pure) matches a split in that tab to a live
+  session by Claude Code's `<glyph> <name>` title, read with `transcript.read_title`.
 - `probe.py`: `lsof` (macOS) or `/proc` (Linux) + `ps` + `git` per worktree. Process ownership is decided by walking
   ancestors: a Claude shell-snapshot or `claude` ancestor means agent; a login/terminal means
   the user's own shell (ignored); reparented to pid 1 (or a `systemd --user` subreaper) means orphan.
@@ -46,8 +53,9 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
   stubbed there) for the hero GIF. Re-run both after UI changes.
 - `advice.py`: drafts the nudge `n` sends the lead (state, flags, judge concern, advice
   mirroring README's "What to do"). Pure.
-- `inbox.py`: finds the lead's live process in `~/.claude/sessions/<pid>.json` and writes one
-  JSON line to its `messagingSocketPath`. **The only module that knows the inbox format.**
+- `inbox.py`: reads the live-session registry `~/.claude/sessions/<pid>.json` (`live_sessions`),
+  finds the lead's process there and writes one JSON line to its `messagingSocketPath`.
+  **The only module that knows the registry and inbox formats.**
 - `app.py`: TUI. `tick()` every 2 s, probes every 5 s and the judge every 10 s run in
   `@work(thread=True)` workers and hand results back with `call_from_thread`.
 - `web.py` + `static/index.html`: stdlib `ThreadingHTTPServer` on 127.0.0.1. `LaneState` owns

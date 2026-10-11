@@ -98,3 +98,75 @@ def test_the_preview_under_the_table_folds_tool_calls_too(tmp_path):
 
     opened, scrolls = asyncio.run(run())
     assert opened and scrolls  # its 23 calls no longer fit in the pane
+
+
+class FakeChooser:
+    def __init__(self, refs, neighbour=None):
+        self.list, self.neighbour = refs, neighbour
+
+    def refs(self):
+        return self.list
+
+
+def other_session(tmp_path, sid, agents=0, mtime=1000.0):
+    from test_choose import write_session
+
+    from tracon.session import session_ref
+
+    write_session(tmp_path / "projects", "/work/repo", sid, agents=agents, title=f"title of {sid}", mtime=mtime)
+    return session_ref(sid, "/work/repo", str(tmp_path / "projects"))
+
+
+def test_follows_the_split_and_new_sessions_but_not_older_ones(tmp_path):
+    demo = Demo(root=str(tmp_path / "demo"))
+    old = other_session(tmp_path, "old-one", agents=1)
+    beside = other_session(tmp_path, "beside")
+    fresh = other_session(tmp_path, "fresh", agents=1)
+    chooser = FakeChooser([demo.ref, old])
+
+    async def run():
+        app = LaneApp([demo.ref, old], at=None, thresholds=Thresholds(), notify=False, judge=demo.judge,
+                      title_prefix=None, prober=demo.prober, chooser=chooser)
+        seen = []
+        async with app.run_test(size=(216, 30)) as pilot:
+            await pilot.pause(0.3)
+            for refs, neighbour in [([old, demo.ref], None), ([beside, demo.ref], "beside"), ([fresh, beside], None)]:
+                chooser.list, chooser.neighbour = refs, neighbour
+                app.follow_tick()
+                await app.workers.wait_for_complete()
+                await pilot.pause(0.2)
+                seen.append(app.session.ref.session_id)
+        return seen
+
+    # An older session with new activity doesn't steal the view; the split and a new session do.
+    assert asyncio.run(run()) == [demo.ref.session_id, "beside", "fresh"]
+
+
+def test_s_lists_sessions_newest_first_and_picking_one_stops_following(tmp_path, monkeypatch):
+    import tracon.app as app_mod
+
+    demo = Demo(root=str(tmp_path / "demo"))
+    old = other_session(tmp_path, "old-one", agents=1, mtime=1000)
+    older = other_session(tmp_path, "older-one", agents=2, mtime=500)
+    monkeypatch.setattr(app_mod, "find_sessions", lambda: [old, older])
+    chooser = FakeChooser([demo.ref])
+
+    async def run():
+        app = LaneApp([demo.ref], at=None, thresholds=Thresholds(), notify=False, judge=demo.judge,
+                      title_prefix=None, prober=demo.prober, chooser=chooser)
+        async with app.run_test(size=(216, 30)) as pilot:
+            await pilot.pause(0.3)
+            await pilot.press("s")
+            await pilot.pause(0.2)
+            table = app.screen.query_one("#sessions")
+            rows = [table.get_row_at(i) for i in range(table.row_count)]
+            listed = [(str(r[0]), str(r[3])) for r in rows]
+            await pilot.press("down", "enter")
+            await pilot.pause(0.2)
+            return listed, app.session.ref.session_id, app.chooser
+
+    listed, watching, chooser_after = asyncio.run(run())
+    # The watched demo session is current (●), and newest, so first; the cursor starts on it.
+    assert [mark for mark, _ in listed] == ["●", "", ""]
+    assert [title for _, title in listed][1:] == ["title of old-one", "title of older-one"]
+    assert watching == "old-one" and chooser_after is None

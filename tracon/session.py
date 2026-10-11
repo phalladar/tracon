@@ -9,7 +9,9 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from .transcript import Event, Transcript, iter_until
+from . import ghostty
+from .inbox import SESSIONS_DIR, Live, live_sessions
+from .transcript import Event, Transcript, iter_until, read_title
 
 PROJECTS_ROOT = os.path.expanduser("~/.claude/projects")
 
@@ -38,18 +40,90 @@ class SessionRef:
 def find_sessions(project: str | None = None, root: str = PROJECTS_ROOT) -> list[SessionRef]:
     """Sessions that spawned subagents, most recently active first."""
     pattern = os.path.join(root, encode_project(project) if project else "*", "*", "subagents")
-    refs = []
-    for sub in glob.glob(pattern):
-        files = glob.glob(os.path.join(sub, "*.jsonl"))
-        if not files:
-            continue
-        session_dir = os.path.dirname(sub)
-        lead = session_dir + ".jsonl"
-        mtimes = [os.path.getmtime(f) for f in files]
-        if os.path.exists(lead):
-            mtimes.append(os.path.getmtime(lead))
-        refs.append(SessionRef(os.path.dirname(session_dir), os.path.basename(session_dir), max(mtimes), len(files)))
-    return sorted(refs, key=lambda r: r.mtime, reverse=True)
+    refs = [_ref(os.path.dirname(sub)) for sub in glob.glob(pattern)]
+    return sorted((r for r in refs if r.n_agents), key=lambda r: r.mtime, reverse=True)
+
+
+def find_sessions_near(path: str, root: str = PROJECTS_ROOT) -> list[SessionRef]:
+    """Sessions of the project at `path`, or of the nearest folder above it that has any."""
+    path = os.path.abspath(os.path.expanduser(path))
+    while True:
+        refs = find_sessions(path, root)
+        parent = os.path.dirname(path)
+        if refs or parent == path or parent == "/":
+            return refs
+        path = parent
+
+
+def lead_path(session_id: str, cwd: str = "", root: str = PROJECTS_ROOT) -> str | None:
+    """The lead transcript of `session_id`; `cwd` (where it was started) saves a search."""
+    if cwd:
+        path = os.path.join(root, encode_project(cwd), session_id + ".jsonl")
+        if os.path.exists(path):
+            return path
+    return next(iter(glob.glob(os.path.join(root, "*", session_id + ".jsonl"))), None)
+
+
+def session_ref(session_id: str, cwd: str = "", root: str = PROJECTS_ROOT) -> SessionRef | None:
+    """A session by id, whether or not it has spawned subagents yet."""
+    path = lead_path(session_id, cwd, root)
+    return _ref(path[: -len(".jsonl")]) if path else None
+
+
+def _ref(session_dir: str) -> SessionRef:
+    files = glob.glob(os.path.join(session_dir, "subagents", "*.jsonl"))
+    mtimes = [os.path.getmtime(f) for f in files + [session_dir + ".jsonl"] if os.path.exists(f)]
+    return SessionRef(os.path.dirname(session_dir), os.path.basename(session_dir), max(mtimes, default=0.0), len(files))
+
+
+@dataclass
+class Chooser:
+    """Picks the session to watch when none was named: the Claude Code session in a split next to
+    tracon (Ghostty only), else the newest with subagents in this project or the nearest parent
+    folder that has one, else the newest anywhere. `refs()` is asked again while tracon follows."""
+
+    cwd: str = ""
+    project: str | None = None  # --project: only this project, and no split matching
+    terminal: str | None = None  # tracon's own Ghostty terminal, from ghostty.find_self()
+    ignore_prefix: str = ""  # titles of other tracon panes
+    root: str = PROJECTS_ROOT
+    sessions_root: str = SESSIONS_DIR
+    neighbour: str | None = None  # session id found in the split at the last refs()
+    _titles: dict[str, tuple[int, str]] = field(default_factory=dict)  # path -> (size, title)
+
+    def refs(self) -> list[SessionRef]:
+        if self.project:
+            refs = find_sessions(self.project, self.root)
+        else:
+            refs = find_sessions_near(self.cwd, self.root) if self.cwd else []
+            refs = refs or find_sessions(root=self.root)
+        nb = self._neighbour()
+        self.neighbour = nb.session_id if nb else None
+        if nb:
+            refs = [nb] + [r for r in refs if r.session_id != nb.session_id]
+        return refs
+
+    def _neighbour(self) -> SessionRef | None:
+        if not self.terminal or self.project:
+            return None
+        panes = ghostty.panes()
+        if not panes:
+            return None
+        live = live_sessions(self.sessions_root)
+        sid = ghostty.pick_neighbour(self.terminal, panes, live, self._title, self.ignore_prefix)
+        lv = next((lv for lv in live if lv.session_id == sid), None)
+        return session_ref(lv.session_id, lv.cwd, self.root) if lv else None
+
+    def _title(self, lv: Live) -> str:
+        path = lead_path(lv.session_id, lv.cwd, self.root)
+        try:
+            size = os.path.getsize(path or "")
+        except OSError:
+            return ""
+        cached = self._titles.get(path)
+        if cached is None or cached[0] != size:
+            cached = self._titles[path] = (size, read_title(path))
+        return cached[1]
 
 
 @dataclass

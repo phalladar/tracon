@@ -18,8 +18,8 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
-from textual.screen import Screen
+from textual.containers import Vertical, VerticalScroll
+from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, Static
 
 from . import inbox
@@ -27,9 +27,9 @@ from .advice import compose
 from .judge import Judge, Judgment
 from .lane import FileMatrix, assess_all, card_label
 from .probe import Prober, WorktreeProbe
-from .session import Agent, Session, SessionRef, find_sessions
+from .session import Agent, Chooser, Session, SessionRef, find_sessions, session_ref
 from .signals import Status, Thresholds, _pending, fmt_duration
-from .transcript import EDIT_TOOLS, HANDBACK_TOOLS, Event, iter_until
+from .transcript import EDIT_TOOLS, HANDBACK_TOOLS, Event, iter_until, read_title
 
 # Status colours (good / warning / serious / critical) are kept apart from the activity colours,
 # which are the first three categorical slots, so a state never reads as an activity.
@@ -63,6 +63,10 @@ def tool_kind(tool: str) -> str:
 
 def local(ts: datetime, fmt: str = "%H:%M:%S") -> str:
     return ts.astimezone().strftime(fmt)
+
+
+def ago(seconds: float) -> str:
+    return f"{fmt_duration(seconds)} ago" if seconds < 86400 else f"{int(seconds // 86400)}d ago"
 
 
 def short_path(path: str) -> str:
@@ -571,6 +575,68 @@ class TimelineScreen(Screen):
         return t
 
 
+class SessionsScreen(ModalScreen[SessionRef | None]):
+    """`s`: recent sessions, newest first, to pick the one to watch."""
+
+    LIMIT = 40
+    DEFAULT_CSS = """
+    SessionsScreen { align: center middle; }
+    #sessions-box { width: 90%; max-width: 150; height: 80%; border: round $primary; background: $surface; padding: 0 1; }
+    #sessions-help { height: 1; color: $text-muted; }
+    #sessions { height: 1fr; }
+    #sessions > .datatable--cursor { background: $primary 28%; text-style: none; }
+    """
+    BINDINGS = [Binding("escape,q,s", "dismiss_none", "Back")]
+
+    def __init__(self, current: SessionRef, neighbour: str | None) -> None:
+        super().__init__()
+        self.current = current
+        self.neighbour = neighbour
+        self.refs: list[SessionRef] = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="sessions-box"):
+            yield Static("Sessions with subagents, last active first · enter watch · esc back", id="sessions-help")
+            yield DataTable(id="sessions", cursor_type="row", zebra_stripes=False, cursor_foreground_priority="renderable")
+
+    def on_mount(self) -> None:
+        refs = {r.session_id: r for r in find_sessions()[: self.LIMIT]}
+        # The watched session and the one in the next split may not have subagents yet.
+        for extra in (self.current, session_ref(self.neighbour) if self.neighbour else None):
+            if extra and extra.session_id not in refs:
+                refs[extra.session_id] = extra
+        self.refs = sorted(refs.values(), key=lambda r: r.mtime, reverse=True)
+        table = self.query_one(DataTable)
+        for label, key in [("", "mark"), ("LAST ACTIVE", "when"), ("AGENTS", "agents"), ("SESSION", "title"), ("PROJECT", "project"), ("ID", "id")]:
+            table.add_column(label, key=key)
+        now = datetime.now().astimezone()
+        for r in self.refs:
+            when = datetime.fromtimestamp(r.mtime).astimezone()
+            stamp = when.strftime("%H:%M" if when.date() == now.date() else "%b %d %H:%M")
+            mark = Text("●", style="bold cyan") if r.session_id == self.current.session_id else Text("")
+            if r.session_id == self.neighbour:
+                mark.append("⇄", style="cyan")
+            table.add_row(
+                mark,
+                Text(f"{stamp:>12}  {ago((now - when).total_seconds()):>11}", style="grey70"),
+                Text(str(r.n_agents), justify="right"),
+                Text(CONTROL_CHARS.sub(" ", read_title(os.path.join(r.project_dir, r.session_id + ".jsonl"))) or "—"),
+                Text(r.project_name, style="grey58"),
+                Text(r.session_id[:8], style="grey50"),
+                key=r.session_id,
+            )
+        ids = [r.session_id for r in self.refs]
+        if self.current.session_id in ids:
+            table.move_cursor(row=ids.index(self.current.session_id))
+        table.focus()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.dismiss(next((r for r in self.refs if r.session_id == event.row_key.value), None))
+
+    def action_dismiss_none(self) -> None:
+        self.dismiss(None)
+
+
 # -- main app ---------------------------------------------------------------
 
 
@@ -600,7 +666,7 @@ class LaneApp(App):
         Binding("h", "toggle_done", "Hide done"),
         Binding("o", "open_worktree", OPEN_LABEL),
         Binding("c", "copy_path", "Copy path"),
-        Binding("s", "next_session", "Session"),
+        Binding("s", "sessions", "Session"),
         Binding("left_square_bracket", "step(-5)", "-5m"),
         Binding("right_square_bracket", "step(5)", "+5m"),
         Binding("left_curly_bracket", "step(-30)", "-30m", show=False),
@@ -619,6 +685,7 @@ class LaneApp(App):
         web_port: int = 8765,
         title_prefix: str | None = "◎ ",
         prober: Prober | None = None,
+        chooser: Chooser | None = None,
     ) -> None:
         super().__init__()
         self.title_prefix = title_prefix
@@ -627,7 +694,10 @@ class LaneApp(App):
         self.matrix = FileMatrix([], [])
         self.web_port = web_port
         self.web_url: str | None = None
-        self.refs = refs
+        # Without --session, keep choosing: switch to the session in the next split when it changes,
+        # or to a new one that tops the chooser's list. Stops once a session is picked with `s`.
+        self.chooser = chooser
+        self._known = {r.session_id for r in refs}
         self.session = Session(refs[0])
         self.at = at
         self.th = thresholds
@@ -666,6 +736,7 @@ class LaneApp(App):
         self.set_interval(5, self.probe_tick)
         self.set_interval(0.5, self.play_tick)
         self.set_interval(10, self.judge_tick)
+        self.set_interval(5, self.follow_tick)
         self.probe_tick()
 
     # -- data ---------------------------------------------------------------
@@ -692,6 +763,36 @@ class LaneApp(App):
     def _set_probes(self, result: dict[str, WorktreeProbe]) -> None:
         self.probes.update(result)
         self.tick()
+
+    def follow_tick(self) -> None:
+        if self.chooser is not None and self.at is None:
+            self.run_follow(self.chooser)
+
+    @work(thread=True, exclusive=True, group="follow")
+    def run_follow(self, chooser: Chooser) -> None:
+        refs = chooser.refs()
+        self.call_from_thread(self._follow, chooser, refs)
+
+    def _follow(self, chooser: Chooser, refs: list[SessionRef]) -> None:
+        if chooser is not self.chooser or not refs:  # a session was picked meanwhile
+            return
+        top = refs[0]
+        new = top.session_id not in self._known
+        self._known |= {r.session_id for r in refs}
+        if top.session_id == self.session.ref.session_id:
+            return
+        if top.session_id == chooser.neighbour:
+            self.switch_session(top, "in the next split")
+        elif new:
+            self.switch_session(top, "newest")
+
+    def switch_session(self, ref: SessionRef, why: str = "") -> None:
+        self.session = Session(ref)
+        self.probes.clear()
+        self._seen = None
+        self.tick()
+        self.probe_tick()
+        self.notify(f"watching {self.session.title()}" + (f" ({why})" if why else "") + f" · {ref.session_id[:8]}", timeout=4)
 
     def judge_tick(self, force_id: str | None = None) -> None:
         """Ask the judge about active agents that have done enough since their last check."""
@@ -748,6 +849,8 @@ class LaneApp(App):
         self._set_terminal_title(title)
         project = os.path.basename(s.lead.cwd) if s.lead.cwd else s.ref.project_name
         t.append(f"   {project} · session {s.ref.session_id[:8]}", style="grey58")
+        if self.chooser and self.chooser.neighbour == s.ref.session_id:
+            t.append(" · ⇄ next split", style="grey58")
         lead_ev = list(iter_until(s.lead.events, self.at))
         now = self.at or datetime.now(timezone.utc)
         if lead_ev:
@@ -1044,16 +1147,16 @@ class LaneApp(App):
                 pass
         self.copy_to_clipboard(text)  # OSC 52: works in most terminals, and over ssh
 
-    def action_next_session(self) -> None:
-        self.refs = find_sessions() or self.refs
-        ids = [r.session_id for r in self.refs]
-        cur = ids.index(self.session.ref.session_id) if self.session.ref.session_id in ids else -1
-        self.session = Session(self.refs[(cur + 1) % len(self.refs)])
-        self.probes.clear()
-        self._seen = None
-        self.tick()
-        self.probe_tick()
-        self.notify(f"session {self.session.ref.session_id[:8]} · {self.session.lane() or '?'}", timeout=3)
+    def action_sessions(self) -> None:
+        neighbour = self.chooser.neighbour if self.chooser else None
+        self.push_screen(SessionsScreen(self.session.ref, neighbour), self._picked)
+
+    def _picked(self, ref: SessionRef | None) -> None:
+        if ref is None:
+            return
+        self.chooser = None  # the user chose: stop following
+        if ref.session_id != self.session.ref.session_id:
+            self.switch_session(ref)
 
     def action_step(self, minutes: int) -> None:
         span = self.session.span()
