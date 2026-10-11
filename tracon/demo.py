@@ -146,6 +146,7 @@ class DemoProber:
             for aid, (ahead, dirty) in state.items()
         }
         self._probes[worktree("a3d05e7a")].procs = [Proc(48213, "00:42", "uv run pytest tests/ -x -q")]
+        self._probes[worktree("a7a2d6c5")].behind = 2  # #17 never merged main
 
     def probe(self, worktrees: list[str], git: bool = True) -> dict[str, WorktreeProbe]:
         return {wt: p for wt, p in self.all().items() if wt in worktrees}

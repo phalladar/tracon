@@ -23,6 +23,7 @@ class WorktreeProbe:
     procs: list[Proc] = field(default_factory=list)
     branch: str = ""
     ahead: int | None = None  # commits ahead of the base branch
+    behind: int | None = None  # base-branch commits HEAD doesn't contain
     dirty: int = 0  # changed paths in `git status --porcelain`
     head: str = ""
     exists: bool = True
@@ -91,6 +92,8 @@ class Prober:
         if base:
             n = _run(["git", "-C", wt, "rev-list", "--count", f"{base}..HEAD"]).strip()
             pr.ahead = int(n) if n.isdigit() else None
+            n = _run(["git", "-C", wt, "rev-list", "--count", f"HEAD..{base}"]).strip()
+            pr.behind = int(n) if n.isdigit() else None
         fp = (pr.head, status)
         prev = self._fingerprints.get(wt)
         if prev is None or prev[:2] != fp:

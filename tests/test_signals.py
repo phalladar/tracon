@@ -224,6 +224,32 @@ def test_no_stale_base_when_agent_merged(b):
     assert "STALE-BASE" not in codes(b.assess(3))
 
 
+def test_no_stale_base_when_agent_reset_onto_master(b):
+    b.bash(0.5, "cd /repo; git merge --no-ff worktree-agent-a0 -m 'Merge #0'", to=b.lead)
+    b.bash(1, "git reset --hard master && git log --oneline -3")
+    b.edit(2, WT + "/core/ids.gd")
+    assert "STALE-BASE" not in codes(b.assess(3))
+
+
+def test_file_checkout_from_master_is_not_catching_up(b):
+    b.bash(0.5, "cd /repo; git merge --no-ff worktree-agent-a0 -m 'Merge #0'", to=b.lead)
+    b.bash(1, "git checkout master -- core/ids.gd")
+    b.edit(2, WT + "/core/ids.gd")
+    assert "STALE-BASE" in codes(b.assess(3))
+
+
+def test_probe_clears_stale_base_when_head_contains_master(b):
+    # A reset to a SHA isn't visible as catching up in the transcript; git says it did.
+    b.bash(0.5, "cd /repo; git merge --no-ff worktree-agent-a0 -m 'Merge #0'", to=b.lead)
+    b.bash(1, "git reset --hard 6407ba26")
+    b.edit(2, WT + "/core/ids.gd")
+    caught_up, stale = probe(), probe()
+    caught_up.behind, stale.behind = 0, 3
+    assert "STALE-BASE" not in codes(b.assess(3, caught_up, live=True))
+    f = next(f for f in b.assess(3, stale, live=True).flags if f.code == "STALE-BASE")
+    assert "3 commits behind" in f.detail
+
+
 def test_uncommitted_edits_age(b):
     b.edit(1, WT + "/core/ids.gd")
     b.bash(50, "echo still going")

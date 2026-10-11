@@ -331,14 +331,20 @@ def _flags(st, agent, session, events, at, probe, th) -> list[Flag]:
         flags.append(Flag("BRANCH", "warn", f"on {branch}, expected {agent.own_branch}"))
 
     if agent.worktree:
-        # A worktree branches from where the lead's session started. Once the lead has merged
-        # something, an agent that edits before merging the base works on stale code.
+        # A worktree branches from origin's base branch, which lags the lead's local merges. Once
+        # the lead has merged something, an agent that edits before catching up works on stale
+        # code. The live probe has the last word: if HEAD already contains the base, it caught up
+        # in a way the transcript doesn't show (a reset to a SHA, say).
         first_edit = next((e for e in tool_uses if e.tool in EDIT_TOOLS), None)
-        if first_edit:
+        behind = probe.behind if probe else None
+        if first_edit and behind != 0:
             lead_merge = session.lead_merge_before(first_edit.ts)
             merged = next((e for e in tool_uses if is_base_merge(e)), None)
             if lead_merge and (merged is None or merged.ts > first_edit.ts):
-                flags.append(Flag("STALE-BASE", "warn", "edited before merging master, which had moved since its worktree was made"))
+                detail = "edited before merging master, which had moved since its worktree was made"
+                if behind:
+                    detail += f" ({behind} commit{'s' if behind != 1 else ''} behind)"
+                flags.append(Flag("STALE-BASE", "warn", detail))
 
     last_commit = max((e.ts for e in tool_uses if is_commit(e)), default=None)
     first_unc = next((e for e in tool_uses if e.tool in EDIT_TOOLS and (last_commit is None or e.ts > last_commit)), None)

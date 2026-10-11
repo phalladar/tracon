@@ -192,7 +192,7 @@ on its agents or on you), so its activity is never mistaken for a subagent's.
 | **DENIED** | Tool calls were denied, with the classifier's reasons (e.g. "Modify Shared Resources"). Amber for 30 min, then grey | Decide whether it should have that permission; if so, allow it and have the lead tell it to retry |
 | **OUTSIDE** | A worktree agent edited the main checkout instead of its worktree | Check `git status` in your main checkout and undo or move those edits |
 | **BRANCH** | Its worktree is on a different branch from the one it was given | Check it hasn't committed to the wrong branch before you merge |
-| **STALE-BASE** | It started editing before merging the base branch, after the lead had already merged something | Expect conflicts; have it merge the base before it goes further |
+| **STALE-BASE** | It started editing before merging the base branch, after the lead had already merged something. Live, git has the last word: no flag once its HEAD contains the base, and the flag says how many commits behind it is | Expect conflicts; have it merge the base before it goes further |
 | **COLLIDE** | Another agent edited the same file while both were running. Press `x` for the heatmap | The second merge may conflict. Decide which agent owns the file, or plan the merge order |
 | **OFF-BRIEF** | It edited files the brief never names (grey: often legitimate) | Glance at the list; worth a question only if the files look unrelated |
 | **BG** | It launched background or detached runs. Amber when its brief says to run in the foreground | If amber, it is ignoring the brief; have the lead remind it |

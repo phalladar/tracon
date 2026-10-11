@@ -34,7 +34,7 @@ REJECTED_MARKERS = (
     "Permission for this action was denied",
 )
 
-MERGE_BASE_RE = re.compile(r"\bgit\s+(merge|rebase|pull)\b[^\n;&|]*\b(master|main)\b")
+MERGE_BASE_RE = re.compile(r"\bgit\s+(merge|rebase|pull|reset)\b[^\n;&|]*\b(master|main)\b")
 COMMIT_RE = re.compile(r"\bgit\s+commit\b")
 # nohup, setsid, disown, or a lone trailing `&` (not `&&`): work that outlives the tool call.
 DETACH_RE = re.compile(r"\bnohup\b|\bsetsid\b|\bdisown\b|(?<![&>|])&\s*(?:$|;|\n|\))")
