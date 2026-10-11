@@ -23,6 +23,7 @@ COMMAND_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.S)
 # The lead is told when a background task (agent or shell) stops. Status is one of
 # completed / failed / killed / stopped. The same task may notify again after a resume.
 TASK_NOTE_RE = re.compile(r"<task-id>([^<]+)</task-id>.*?<status>([^<]+)</status>(?:.*?<summary>([^<]*)</summary>)?", re.S)
+TASK_NOTE_TOOL_RE = re.compile(r"<tool-use-id>([^<]+)</tool-use-id>")
 
 COORDINATOR_PREFIX = "The coordinator sent a message"
 SYSTEM_NOTIFICATION_PREFIX = "[SYSTEM NOTIFICATION"
@@ -55,6 +56,7 @@ class Event:
     rejected: bool = False
     path: str = ""  # file edited, for edit tools
     background: bool = False
+    detached: bool = False  # backgrounded by the shell (nohup, &): never reports back to the agent
     extra: dict | None = None  # raw input for coordination tools; parsed fields for task notes
     final: bool = False  # text that ended the agent's turn (stop_reason end_turn)
 
@@ -77,6 +79,7 @@ class Transcript:
     _offset: int = 0
     _partial: bytes = b""
     _seen_msg_ids: set = field(default_factory=set)
+    _inherited: bool = False  # inside a fork's copy of the lead's spawning message
 
     def refresh(self) -> bool:
         """Read any appended lines. Returns True when something new arrived."""
@@ -114,6 +117,19 @@ class Transcript:
         if rtype == "agent-name" and rec.get("agentName"):
             self.name = rec["agentName"]  # set by /rename; wins over the generated title
             return
+        if rtype == "fork-context-ref":
+            # A fork's transcript opens with the lead's message that spawned it. That Agent
+            # call (and its context usage) is the lead's, not the fork's.
+            self._inherited = True
+            return
+        if rtype == "attachment":
+            # Background task completions can arrive as a queued command instead of user text.
+            att = rec.get("attachment") or {}
+            prompt = att.get("prompt")
+            if att.get("type") == "queued_command" and isinstance(prompt, str) and ts_raw:
+                if prompt.strip().startswith("<task-notification>"):
+                    self._user_text(parse_ts(ts_raw), prompt)
+            return
         if rtype not in ("user", "assistant") or not ts_raw:
             return
         ts = parse_ts(ts_raw)
@@ -125,8 +141,11 @@ class Transcript:
         msg = rec.get("message") or {}
         content = msg.get("content")
         if rtype == "assistant":
+            if self._inherited:
+                return
             self._assistant(ts, msg, content)
         else:
+            self._inherited = False
             self._user(ts, content)
 
     def _assistant(self, ts: datetime, msg: dict, content) -> None:
@@ -193,6 +212,8 @@ class Transcript:
             n = TASK_NOTE_RE.search(t)
             if n:
                 note = {"task_id": n.group(1).strip(), "status": n.group(2).strip(), "summary": (n.group(3) or "").strip()}
+                if tu := TASK_NOTE_TOOL_RE.search(t):
+                    note["tool_use_id"] = tu.group(1).strip()
                 self.events.append(Event(ts, "task_note", summary=f"{note['status']}: {note['summary']}", extra=note))
             return
         if not self.brief:
@@ -244,6 +265,7 @@ def _tool_use_event(ts: datetime, b: dict, cwd: str) -> Event:
     else:
         summary = _one_line(json.dumps(inp), 120)
         key = f"{name}:{json.dumps(inp, sort_keys=True)}"
+    detached = name == "Bash" and not inp.get("run_in_background") and bool(DETACH_RE.search(inp.get("command", "")))
     return Event(
         ts,
         "tool_use",
@@ -252,7 +274,8 @@ def _tool_use_event(ts: datetime, b: dict, cwd: str) -> Event:
         key=key,
         tool_id=b.get("id", ""),
         path=path,
-        background=bool(inp.get("run_in_background")) or (name == "Bash" and bool(DETACH_RE.search(inp.get("command", "")))),
+        background=bool(inp.get("run_in_background")) or detached,
+        detached=detached,
         extra=inp if name in COORDINATION_TOOLS else None,
     )
 

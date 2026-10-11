@@ -349,11 +349,44 @@ def test_lane_falls_back_to_session_title(b):
 
 
 def test_completed_note_after_background_launch_is_parked(b):
-    b.bash(1, "nohup make long &")
+    b.call(1, "Bash", {"command": "make walk", "run_in_background": True}, "Command running in background with ID: bx1.")
     final_text(b, 2, "Waiting on the walk.")
     task_note(b, 3, "completed")
     st = b.assess(20)
     assert st.state == "WAITING" and "mid-task" in st.detail
+
+
+def test_completed_note_after_background_work_reported_back_is_done(b):
+    # A run_in_background shell that already notified the agent (as a queued command) isn't parked work.
+    b.call(1, "Bash", {"command": "make long", "run_in_background": True}, "Command running in background with ID: bx1.")
+    b.agent.append({"type": "attachment", "timestamp": ts(1.5), "attachment": {"type": "queued_command", "prompt": (
+        "<task-notification>\n<task-id>bx1</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<status>completed</status>\n</task-notification>"
+    )}})
+    final_text(b, 2, "Build passes.")
+    task_note(b, 3, "completed")
+    assert b.assess(20).state == "DONE"
+
+
+def test_completed_note_after_detached_launch_is_done(b):
+    # A detached shell never notifies the agent, so the agent can't be parked waiting on it.
+    b.bash(1, "(./app > log 2>&1 &); sleep 2; pkill -f app")
+    final_text(b, 2, "Checked the app.")
+    task_note(b, 3, "completed")
+    assert b.assess(20).state == "DONE"
+    assert b.assess(20, probe(), live=True).state == "DONE"
+
+
+def test_fork_does_not_inherit_the_leads_spawn_call(b):
+    # A fork's transcript opens with the lead's message that launched it in the background.
+    spawn = {"type": "assistant", "timestamp": ts(-1), "cwd": WT, "message": {"id": "lead1", "content": [
+        {"type": "tool_use", "id": "toolu_lead", "name": "Agent", "input": {"description": "#1 test card", "run_in_background": True}}]}}
+    b.agent[:0] = [{"type": "fork-context-ref", "agentId": "a1"}, spawn]
+    b.bash(1, "make")
+    final_text(b, 2, "All done.")
+    task_note(b, 3, "completed")
+    s = b.session()
+    assert not any(e.tool == "Agent" for e in s.agents["a1"].transcript.events)
+    assert b.assess(20).state == "DONE"
 
 
 def test_session_title_prefers_rename_then_generated_title(b):

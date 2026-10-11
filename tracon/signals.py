@@ -140,6 +140,17 @@ def assess(
 # -- state ------------------------------------------------------------------
 
 
+def _open_launches(events, since) -> list:
+    """Background launches after `since` that haven't reported back to the agent.
+    Detached shells (nohup, `&`) never report back, so they stay open."""
+    ended = {e.extra.get("tool_use_id") for e in events if e.kind == "task_note" and e.extra}
+    return [
+        e for e in events
+        if e.kind == "tool_use" and e.background and e.tool_id not in ended and (since is None or e.ts > since.ts)
+    ]
+
+
+
 def _state(agent, session, events, at, now, probe, th) -> tuple[str, str]:
     last = events[-1]
     age = (at - last.ts).total_seconds()
@@ -155,10 +166,8 @@ def _state(agent, session, events, at, now, probe, th) -> tuple[str, str]:
         status = note.extra.get("status", "")
         final_text = _final_text(events)
         if status == "completed":
-            parked = [
-                e for e in events
-                if e.kind == "tool_use" and e.background and (handback is None or e.ts > handback.ts)
-            ]
+            # Only work that reports back can wake it; a detached shell never does.
+            parked = [e for e in _open_launches(events, handback) if not e.detached]
             if parked:
                 # It stopped while work it launched was still going: parked mid-task, not done.
                 return "WAITING", f"stopped mid-task while its background work runs (lead told 'completed'): {final_text}"
@@ -178,7 +187,7 @@ def _state(agent, session, events, at, now, probe, th) -> tuple[str, str]:
     if last.kind == "text" and last.final and not _pending(events):
         if live:
             return "WAITING", f"ended its turn; background work still running: {probe.leaf_command()[:80]}"
-        if live is None and any(e.kind == "tool_use" and e.background for e in events):
+        if live is None and _open_launches(events, None):
             # No process data (replay, or no worktree) and it launched background work: it may
             # be parked until that work notifies it. The lead's task note settles it either way.
             return "WAITING", "ended its turn; may be waiting on background work it launched"

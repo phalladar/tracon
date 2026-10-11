@@ -63,7 +63,9 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
 - "Finished" has several sources, strongest first: the lead's `<task-notification>` (status
   completed/failed/killed/stopped; a later event means it was resumed), a `SubagentHandback`
   call, or a final `end_turn` text with nothing pending. A completion while the agent's own
-  background launches may still run is WAITING (parked mid-task), not REPORTED.
+  `run_in_background` shell or background agent hasn't reported back (a `<task-notification>`
+  with its `<tool-use-id>` in the agent's transcript) is WAITING (parked mid-task), not DONE.
+  Detached shells (`nohup`, `&`) never report back, so they don't park an agent.
 - Don't infer the branch from a transcript's `gitBranch` field: it doesn't follow the agent's
   worktree. Use the live probe.
 - Web page: build DOM with `textContent` / `createElement`, never `innerHTML`. Transcript text
@@ -87,6 +89,9 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
 - Checking UI changes: drive the app with `App.run_test()` + `pilot`, `save_screenshot()` to
   SVG, then `qlmanage -t -s 1800 -o <dir> file.svg` to get a PNG. Headless Chrome screenshots
   of the web page work, but Chrome may not exit afterwards (the page polls), so kill it.
+- A fork's transcript opens with a `fork-context-ref` record, then a copy of the lead's message
+  that spawned it (a background `Agent` call). `Transcript` skips that copy. Task notifications
+  can also arrive as `attachment` records (`queued_command`), in the lead and in agents.
 - Inbox wire format (Claude Code 2.1.296, `peerProtocol: 1`): one line
   `{"type":"user","message":{"role":"user","content":"..."}}`, optionally preceded by
   `{"type":"auth","token":...}`. The socket closes a connection that sends no complete line
