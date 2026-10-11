@@ -494,6 +494,9 @@ class LaneApp(App):
     CSS = """
     #header { height: auto; padding: 0 1; background: $boost; }
     #agents { height: 1fr; }
+    /* Tint the selected row instead of painting it solid: cells keep their status colours. */
+    #agents > .datatable--cursor { background: $primary 15%; text-style: none; }
+    #agents:focus > .datatable--cursor { background: $primary 28%; color: $foreground; text-style: none; }
     #preview { height: 12; border-top: solid $primary-darken-2; padding: 0 1; }
     #detail-top { height: auto; max-height: 50%; padding: 0 1; border-bottom: solid $primary-darken-2; }
     #detail-feed { height: 1fr; padding: 0 1; }
@@ -547,11 +550,12 @@ class LaneApp(App):
         self.probes: dict[str, WorktreeProbe] = {}
         self.prober = prober or Prober()
         self._order: list[str] = []
+        self._marked: str | None = None
         self._seen: dict[str, tuple[str, frozenset]] | None = None
 
     def compose(self) -> ComposeResult:
         yield Static(id="header")
-        yield DataTable(id="agents", cursor_type="row", zebra_stripes=False)
+        yield DataTable(id="agents", cursor_type="row", zebra_stripes=False, cursor_foreground_priority="renderable")
         yield RichLog(id="preview", wrap=False, markup=False, max_lines=200)
         yield Footer()
 
@@ -560,11 +564,11 @@ class LaneApp(App):
             self._terminal_write("\x1b[22;2t")  # save the terminal's title; cli restores it on exit
         table = self.query_one(DataTable)
         for label, key in [
-            ("", "icon"), ("STATE", "state"), ("CARD", "card"), ("MODEL", "model"), ("JUDGE", "judge"), ("NOW", "now"),
+            ("", "mark"), ("", "icon"), ("STATE", "state"), ("CARD", "card"), ("MODEL", "model"), ("JUDGE", "judge"), ("NOW", "now"),
             ("QUIET", "quiet"), ("RUN", "run"), ("CONTEXT", "ctx"), ("EDITS", "edits"), ("CMT", "cmt"),
             ("◆", "msgs"), ("FLAGS", "flags"),
         ]:
-            table.add_column(label, key=key)
+            table.add_column(label, key=key, width=1 if key == "mark" else None)
         self.tick()
         self.set_interval(2, self.tick)
         self.set_interval(5, self.probe_tick)
@@ -734,6 +738,7 @@ class LaneApp(App):
         lead_events = list(iter_until(self.session.lead.events, self.at))
         lead_age = ((self.at or datetime.now(timezone.utc)) - lead_events[-1].ts).total_seconds() if lead_events else 0
         table.add_row(
+            Text(""),
             Text("◆", style="bold magenta"),
             Text(lstate, style=SEV_STYLE[lsev]),
             Text("lead · " + self.session.title()[:27], style="bold magenta"),
@@ -751,6 +756,7 @@ class LaneApp(App):
             sev = SEV_STYLE[st.severity]
             off = f" ({len(st.off_brief)}⚑)" if st.off_brief else ""
             table.add_row(
+                Text(""),
                 Text(st.icon),
                 Text(st.state, style=sev),
                 Text(st.agent.description[:34], style="grey50" if st.finished else "bold"),
@@ -769,6 +775,20 @@ class LaneApp(App):
             self._order.append(st.agent.id)
         if selected in self._order:
             table.move_cursor(row=self._order.index(selected), animate=False)
+        self._marked = None
+        self._mark_cursor()
+
+    def _mark_cursor(self) -> None:
+        """A bar at the left edge of the selected row, so the selection shows without recolouring it."""
+        table = self.query_one(DataTable)
+        aid = self.selected_id()
+        if aid == self._marked:
+            return
+        if self._marked in self._order:
+            table.update_cell(self._marked, "mark", Text(""))
+        if aid is not None:
+            table.update_cell(aid, "mark", Text("▌", style="bold"))
+        self._marked = aid
 
     @staticmethod
     def _now_text(st: Status) -> str:
@@ -801,6 +821,7 @@ class LaneApp(App):
         return self._order[table.cursor_row]
 
     def on_data_table_row_highlighted(self, _event) -> None:
+        self._mark_cursor()
         self.render_preview()
 
     def on_data_table_row_selected(self, _event) -> None:
