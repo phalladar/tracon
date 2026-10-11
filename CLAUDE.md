@@ -32,6 +32,10 @@ uv run tracon web --no-judge                    # browser view only
 - `judge.py`: optional LLM check. Two backends: SDK (`api`, needs a key and the `[api]`
   extra) or `claude -p` (`cli`). Scheduling (`due`), budget, and an on-disk cache in
   `~/.cache/tracon/`. Failures are recorded on the `Judgment`, never raised.
+- `advice.py`: drafts the note `m` sends the lead (state, flags, judge concern, advice
+  mirroring README's "What to do"). Pure.
+- `inbox.py`: finds the lead's live process in `~/.claude/sessions/<pid>.json` and writes one
+  JSON line to its `messagingSocketPath`. **The only module that knows the inbox format.**
 - `app.py`: TUI. `tick()` every 2 s, probes every 5 s and the judge every 10 s run in
   `@work(thread=True)` workers and hand results back with `call_from_thread`.
 - `web.py` + `static/index.html`: stdlib `ThreadingHTTPServer` on 127.0.0.1. `LaneState` owns
@@ -39,7 +43,10 @@ uv run tracon web --no-judge                    # browser view only
 
 ## Rules
 
-- Never write to `~/.claude/` or to a watched repo. The only write is the judge cache.
+- Never write to `~/.claude/` or to a watched repo. The only writes are the judge cache and a
+  message to the lead's inbox socket, sent only when the user presses `m`, sees the text and
+  confirms with `ctrl+s`. Never send automatically, never send to a subagent, and never read
+  the `~/.claude/sessions/*.key` files (auth is optional on macOS/Linux).
 - Keep `signals.py` pure; anything that needs several agents goes in `lane.py`.
 - A new state or flag needs a test in `tests/` built from a synthetic transcript (see the
   `Builder` in `test_signals.py` and `Lane` in `test_lane.py`), and a row in README.md.
@@ -72,6 +79,11 @@ uv run tracon web --no-judge                    # browser view only
 - Checking UI changes: drive the app with `App.run_test()` + `pilot`, `save_screenshot()` to
   SVG, then `qlmanage -t -s 1800 -o <dir> file.svg` to get a PNG. Headless Chrome screenshots
   of the web page work, but Chrome may not exit afterwards (the page polls), so kill it.
+- Inbox wire format (Claude Code 2.1.296, `peerProtocol: 1`): one line
+  `{"type":"user","message":{"role":"user","content":"..."}}`, optionally preceded by
+  `{"type":"auth","token":...}`. The socket closes a connection that sends no complete line
+  within a deadline and never replies, so a silent socket is not an error. Delivery shows in
+  the lead as a peer message; it is held for review under `crossSessionInbound: hold`.
 - `claude -p` runs with `cwd=~/.cache/tracon`, `--setting-sources ""` and
   `--no-session-persistence`, so judging never loads a project's CLAUDE.md or hooks and
   never creates sessions that tracon would then list.

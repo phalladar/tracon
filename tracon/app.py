@@ -12,10 +12,13 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
-from textual.screen import Screen
-from textual.widgets import DataTable, Footer, RichLog, Static
+from textual.containers import Vertical, VerticalScroll
+from textual.screen import ModalScreen, Screen
+from textual.widgets import DataTable, Footer, RichLog, Static, TextArea
 
+from . import inbox
+from .advice import compose
+from .inbox import Inbox
 from .judge import Judge, Judgment
 from .lane import FileMatrix, assess_all, card_label
 from .probe import Prober, WorktreeProbe
@@ -164,6 +167,7 @@ class DetailScreen(Screen):
         Binding("b", "toggle_brief", "Brief"),
         Binding("o", "app.open_worktree", "Open in Ghostty"),
         Binding("c", "app.copy_path", "Copy path"),
+        Binding("m", "app.message_lead", "Message lead"),
     ]
 
     def __init__(self, agent_id: str) -> None:
@@ -439,6 +443,51 @@ class TimelineScreen(Screen):
 # -- main app ---------------------------------------------------------------
 
 
+class MessageScreen(ModalScreen):
+    """Preview and edit a note to the lead about one agent, then send it to the lead's inbox."""
+
+    BINDINGS = [Binding("ctrl+s", "send", "Send"), Binding("escape", "app.pop_screen", "Cancel")]
+    CSS = """
+    MessageScreen { align: center middle; }
+    #msg-box { width: 90%; max-width: 120; height: 80%; border: round $primary; background: $surface; padding: 0 1; }
+    #msg-to { height: auto; }
+    #msg-text { height: 1fr; }
+    """
+
+    def __init__(self, text: str, inbox: Inbox | None) -> None:
+        super().__init__()
+        self.text, self.inbox = text, inbox
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="msg-box"):
+            yield Static(self._to(), id="msg-to")
+            yield TextArea(self.text, id="msg-text", soft_wrap=True)
+        yield Footer()
+
+    def _to(self) -> Text:
+        t = Text()
+        if self.inbox:
+            t.append("to the lead ", style="bold")
+            t.append(f"{self.inbox.name or 'session'} · pid {self.inbox.pid} · {self.inbox.status or '?'}", style="cyan")
+            t.append("  ctrl+s sends · esc cancels", style="grey58")
+        else:
+            t.append("no live inbox for this session", style=f"bold {WARNING}")
+            t.append("  ctrl+s copies to the clipboard · esc cancels", style="grey58")
+        return t
+
+    def action_send(self) -> None:
+        text = self.query_one(TextArea).text.strip()
+        app: LaneApp = self.app  # type: ignore[assignment]
+        self.dismiss()
+        if not text:
+            return
+        if self.inbox:
+            app.send_message(self.inbox.socket, text)
+        else:
+            subprocess.run(["pbcopy"], input=text, text=True)
+            app.notify("copied the message; paste it into the lead's session", timeout=4)
+
+
 class LaneApp(App):
     TITLE = "tracon"
     CSS = """
@@ -455,6 +504,7 @@ class LaneApp(App):
         Binding("x", "files", "Files"),
         Binding("w", "web", "Web"),
         Binding("j", "judge_now", "Judge"),
+        Binding("m", "message_lead", "Message lead"),
         Binding("h", "toggle_done", "Hide done"),
         Binding("o", "open_worktree", "Ghostty"),
         Binding("c", "copy_path", "Copy path"),
@@ -776,6 +826,24 @@ class LaneApp(App):
         elif agent:
             self.run_judge(agent, f"{self.statuses[agent.id].state}: {self.statuses[agent.id].detail}")
             self.notify(f"judging {agent.description}", timeout=2)
+
+    def action_message_lead(self) -> None:
+        agent = self._current_agent()
+        if self.at is not None:
+            self.notify("messaging works live only; press l", timeout=3)
+        elif agent and agent.id in self.statuses:
+            box = inbox.find_inbox(self.session.ref.session_id)
+            self.push_screen(MessageScreen(compose(self.statuses[agent.id]), box))
+        else:
+            self.notify("select an agent to message the lead about", timeout=3)
+
+    @work(thread=True, group="message")
+    def send_message(self, sock: str, text: str) -> None:
+        try:
+            inbox.send(sock, text)
+            self.call_from_thread(self.notify, "sent to the lead", timeout=3)
+        except OSError as e:
+            self.call_from_thread(self.notify, f"send failed: {e}", severity="error", timeout=6)
 
     def action_web(self) -> None:
         if self.web_url is None:

@@ -11,8 +11,9 @@ watching every aircraft on one scope, `tracon` shows every agent at once: what i
 whether it is holding, whether it has drifted off its brief, and whether two of them are on
 a collision course in the same file. Run it in a terminal split next to your session.
 
-It reads only what Claude Code already writes to disk. It never writes to your sessions or
-your repository.
+It reads only what Claude Code already writes to disk. It never writes to your repository,
+and it sends something to a session only when you press `m` and confirm (see
+[Messaging the lead](#messaging-the-lead)).
 
 > tracon is an independent project. It is not affiliated with, endorsed by or sponsored by
 > Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
@@ -63,6 +64,7 @@ A good layout: your orchestrating session on one side, `tracon` in a split next 
 | `x` | files heatmap: which agents edited which files, concurrent edits marked `!` |
 | `w` | open the browser view |
 | `j` | ask the judge about the selected agent now |
+| `m` | message the lead about the selected agent: a note with its state, flags and what to do, which you can edit before sending (live only) |
 | `[` `]` / `{` `}` | rewind / forward 5 / 30 min (enters replay) · `space` play · `l` back to live |
 | `o` / `c` | open the agent's worktree in a new Ghostty window / copy its path |
 | `h` / `s` / `q` | hide finished agents / next session / quit |
@@ -177,6 +179,22 @@ See [Judge verdicts](#judge-verdicts) for what each one means.
 
 Judgments are cached in `~/.cache/tracon/judgments.json`, so replays and restarts show them.
 
+## Messaging the lead
+
+Most of the "What to do" advice above is "have the lead…". Press `m` on an agent (in the table
+or its detail) and tracon drafts that note for you: the agent's id, state, flags, the judge's
+concern, and the matching advice, phrased for the lead's own tools (`SendMessage`, `TaskStop`).
+Edit it, then `ctrl+s` to send or `esc` to cancel.
+
+It is delivered through Claude Code's cross-session inbox: tracon finds the lead's process in
+`~/.claude/sessions/` and writes one message to the Unix socket listed there. The lead sees it
+as a message from another session, between tool calls or as a new turn if it is idle, and it
+can't approve permission prompts. If the lead's `crossSessionInbound` setting is `hold` (or
+its permission mode makes Claude Code review peer messages), the message waits for you to
+approve it in that session. If the lead isn't running, `ctrl+s` copies the note to the
+clipboard instead. tracon never reads the inbox auth keys; the socket accepts unauthenticated
+messages from your own user on macOS and Linux.
+
 ## Options
 
 | Flag | Default | |
@@ -220,6 +238,8 @@ tracon/
   signals.py     one agent -> state + flags (pure, testable)
   lane.py        whole-run view: file collisions, judge results, assess_all()
   judge.py       the optional LLM check, its scheduling, budget and cache
+  advice.py      the note `m` drafts for the lead
+  inbox.py       find a live session's inbox socket and send to it
   app.py         Textual TUI
   web.py         local HTTP server + JSON API; static/index.html is the page
   cli.py         entry point
@@ -228,7 +248,8 @@ tracon/
 ## Limitations
 
 - Transcript files are Claude Code internals, not a public API. A format change may break
-  parsing; the fix belongs in `transcript.py`.
+  parsing; the fix belongs in `transcript.py`. The same goes for the session registry and
+  inbox socket used by `m`, in `inbox.py`.
 - Built and tested on macOS. Notifications (`osascript`), copy (`pbcopy`) and "open in
   Ghostty" are macOS-only; the rest should work on Linux with `lsof` installed.
 - In replay there is no process data, so a long-running shell call shows as **PENDING**
