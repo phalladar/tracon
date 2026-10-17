@@ -66,7 +66,8 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
 - Never write to `~/.claude/` or to a watched repo. The only writes are the judge cache
   (verdicts and dismissals) and a nudge to the lead's inbox socket, sent only when the user
   presses `n` (one keypress, no preview; a toast confirms it). Never send automatically, never send to a subagent, and never read
-  the `~/.claude/sessions/*.key` files (auth is optional on macOS/Linux).
+  the `~/.claude/sessions/*.key` files (auth is optional on macOS/Linux), except the lead's key
+  on Windows at the moment `n` sends, since the pipe drops unauthenticated messages.
 - Keep `signals.py` pure; anything that needs several agents goes in `lane.py`.
 - A new state or flag needs a test in `tests/` built from a synthetic transcript (see the
   `Builder` in `test_signals.py` and `Lane` in `test_lane.py`), and a row in README.md.
@@ -109,6 +110,13 @@ uv run --with pillow python scripts/hero.py         # regenerate the README hero
   `{"type":"auth","token":...}`. The socket closes a connection that sends no complete line
   within a deadline and never replies, so a silent socket is not an error. Delivery shows in
   the lead as a peer message; it is held for review under `crossSessionInbound: hold`.
+- Windows (Claude Code 2.1.302): `messagingSocketPath` is a named pipe `\\.\pipe\LOCAL\cc-msg-<hex>`,
+  opened as a file (`r+b`). It silently drops a message without the auth line; the token is
+  `peerToken` in `<pid>.<hash>.key` (JSON, also `procStartFt`, `pidDomain`). Verified by sending
+  to a live session: the message lands as `isMeta` with `origin: {kind: peer}`, so the lead
+  sees it but the user only sees whatever the lead says about it.
+- `os.kill(pid, 0)` on Windows sends CTRL_C_EVENT; liveness goes through `OpenProcess` there.
+  Without `ps`, probes report `live=None` (`procs_known=False`), never "nothing running".
 - `claude -p` runs with `cwd=~/.cache/tracon`, `--setting-sources ""` and
   `--no-session-persistence`, so judging never loads a project's CLAUDE.md or hooks and
   never creates sessions that tracon would then list.

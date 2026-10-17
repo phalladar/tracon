@@ -306,8 +306,9 @@ as a message from another session, between tool calls or as a new turn if it is 
 can't approve permission prompts. If the lead's `crossSessionInbound` setting is `hold` (or
 its permission mode makes Claude Code review peer messages), the message waits for you to
 approve it in that session. If the lead isn't running, `n` copies the note to the
-clipboard instead. tracon never reads the inbox auth keys; the socket accepts unauthenticated
-messages from your own user on macOS and Linux.
+clipboard instead. On macOS and Linux tracon never reads the inbox auth keys; the socket accepts
+unauthenticated messages from your own user. The Windows pipe drops them, so there tracon reads
+the lead's key in `~/.claude/sessions/` when you press `n`, and only then.
 
 ## Options
 
