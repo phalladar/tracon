@@ -645,7 +645,7 @@ class SessionsScreen(ModalScreen[SessionRef | None]):
             table.add_column(label, key=key)
         now = datetime.now().astimezone()
         for r in self.refs:
-            when = datetime.fromtimestamp(r.mtime).astimezone()
+            when = datetime.fromtimestamp(r.mtime, timezone.utc).astimezone()  # naive raises near 1970 on Windows
             stamp = when.strftime("%H:%M" if when.date() == now.date() else "%b %d %H:%M")
             mark = Text("●", style="bold cyan") if r.session_id == self.current.session_id else Text("")
             if r.session_id == self.neighbour:
