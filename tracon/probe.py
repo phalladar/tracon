@@ -36,10 +36,12 @@ class WorktreeProbe:
     exists: bool = True
     last_change: float = 0.0  # epoch seconds the HEAD/dirty fingerprint last moved
     probed_at: float = 0.0
+    procs_known: bool = True  # False when the process table couldn't be read (no `ps`, e.g. Windows)
 
     @property
-    def live(self) -> bool:
-        return bool(self.procs)
+    def live(self) -> bool | None:
+        """Whether anything runs in the worktree; None when processes can't be seen, as in replay."""
+        return bool(self.procs) if self.procs_known else None
 
     def leaf_command(self) -> str:
         """The most specific thing running: prefer a non-shell process."""
@@ -73,7 +75,7 @@ class Prober:
         out: dict[str, WorktreeProbe] = {}
         now = time.time()
         for wt in worktrees:
-            pr = WorktreeProbe(probed_at=now)
+            pr = WorktreeProbe(probed_at=now, procs_known=bool(table))  # ps always lists itself
             if not os.path.isdir(wt):
                 pr.exists = False
                 out[wt] = pr

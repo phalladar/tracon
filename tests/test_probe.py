@@ -2,6 +2,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 from tracon.probe import Prober, _owner
 
 SNAPSHOT = "/bin/zsh -c source /Users/u/.claude/shell-snapshots/snapshot-zsh-1.sh && eval 'pytest'"
@@ -31,6 +33,7 @@ def test_owner_walks_up_to_claude_a_terminal_or_init():
     assert _owner(54, table) == "orphan"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="no ps or lsof")
 def test_the_live_probe_sees_a_child_process_and_its_cwd(tmp_path):
     """Exercises the real lsof (macOS) or /proc (Linux) and ps calls."""
     pad = "x" * 200  # long enough that a width-limited ps would cut the command line

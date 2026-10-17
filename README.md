@@ -90,7 +90,8 @@ split reads as part of that session.
 
 ## Install
 
-Requires Python 3.12+, on macOS or Linux.
+Requires Python 3.12+, on macOS or Linux. It also runs on Windows, without the process checks
+(see [Limitations](#limitations)).
 
 ```sh
 uv tool install tracon            # or: pipx install tracon
@@ -300,7 +301,7 @@ refused anything, it quotes the last refusal word for word, so the lead can chec
 without opening the transcript. It is sent as soon as you press the key; a notification confirms it.
 
 It is delivered through Claude Code's cross-session inbox: tracon finds the lead's process in
-`~/.claude/sessions/` and writes one message to the Unix socket listed there. The lead sees it
+`~/.claude/sessions/` and writes one message to the Unix socket (a named pipe on Windows) listed there. The lead sees it
 as a message from another session, between tool calls or as a new turn if it is idle, and it
 can't approve permission prompts. If the lead's `crossSessionInbound` setting is `hold` (or
 its permission mode makes Claude Code review peer messages), the message waits for you to
@@ -319,7 +320,7 @@ messages from your own user on macOS and Linux.
 | `--json` | | output snapshot as JSON (for scripts and status bars) |
 | `--idle MIN` | 5 | silence before IDLE |
 | `--stall MIN` | 20 | running without change before STALLED |
-| `--notify` | off | desktop notifications when an agent needs you (`osascript` on macOS, `notify-send` on Linux) |
+| `--notify` | off | desktop notifications when an agent needs you (`osascript` on macOS, `notify-send` on Linux; none on Windows) |
 | `--no-judge` | | turn the LLM check off |
 | `--judge-model` | `claude-haiku-5-5` | model for the check |
 | `--judge-backend` | `auto` | `api` or `cli` |
@@ -385,8 +386,13 @@ tracon/
   (`<glyph> <name>`), which is how the session in the next Ghostty split is found.
 - Developed on macOS; tests run on macOS and Linux. On Linux, processes are read from `/proc`
   (no `lsof` needed), notifications use `notify-send`, copy uses `wl-copy`, `xclip` or `xsel`
-  (else the terminal's OSC 52), and `o` opens Ghostty or `x-terminal-emulator`. Windows isn't
-  supported; WSL should behave like Linux.
+  (else the terminal's OSC 52), and `o` opens Ghostty or `x-terminal-emulator`.
+- On Windows, tracon reads sessions, runs the judge and nudges the lead (through the named pipe
+  Claude Code registers), but there is no `ps` or `lsof`, so it sees no processes: a long
+  shell call shows as **PENDING**, as in replay, and there are no hung-run or orphan flags. `--notify`
+  does nothing, `c` copies through OSC 52 (Windows Terminal supports it), and `o` has no
+  terminal to open. The worktree checks (wrong checkout, stale base) are untested there. WSL
+  should behave like Linux.
 - In replay there is no process data, so a long-running shell call shows as **PENDING**
   rather than RUNNING or BLOCKED.
 

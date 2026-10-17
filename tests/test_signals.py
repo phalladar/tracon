@@ -120,6 +120,13 @@ def test_live_shell_with_no_process_is_blocked(b):
     assert b.assess(10, probe([]), live=True).state == "BLOCKED"
 
 
+def test_live_shell_without_a_process_table_is_ambiguous(b):  # no `ps`, e.g. Windows
+    b.bash(1, "tools/godot-test 600 --headless res://test/walk.tscn", done=False)
+    blind = WorktreeProbe(branch="worktree-agent-a1", procs_known=False)
+    assert blind.live is None
+    assert b.assess(10, blind, live=True).state == "PENDING"
+
+
 def test_silent_with_nothing_running_is_idle(b):
     b.bash(1, "git merge master")
     st = b.assess(12, probe([]), live=True)
