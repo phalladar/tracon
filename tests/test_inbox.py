@@ -106,8 +106,10 @@ def test_find_inbox_reads_the_key_only_for_a_pipe(tmp_path, sockdir):
 def test_token_takes_a_bare_or_json_key(tmp_path):
     from tracon.inbox import _token
 
+    (tmp_path / "6.ff.key").write_text('{"peerToken": "tok-peer", "procStartFt": "1", "pidDomain": "win32"}')
     (tmp_path / "7.aa.key").write_text('{"token": "tok-json", "v": 1}')
     (tmp_path / "8.bb.key").write_text('"tok-quoted"')
+    assert _token(6, str(tmp_path)) == "tok-peer"
     assert _token(7, str(tmp_path)) == "tok-json"
     assert _token(8, str(tmp_path)) == "tok-quoted"
     assert _token(9, str(tmp_path)) == ""

@@ -72,7 +72,7 @@ def find_inbox(session_id: str, root: str = SESSIONS_DIR) -> Inbox | None:
 
 
 def _token(pid: int, root: str) -> str:
-    """The token in `<pid>.<hash>.key`: a bare string or JSON with a `token` field; "" if none."""
+    """The token in `<pid>.<hash>.key` (JSON with `peerToken` on Windows, Claude Code 2.1.302); "" if none."""
     for f in Path(root).glob(f"{pid}.*.key"):
         try:
             raw = f.read_text().strip()
@@ -83,7 +83,7 @@ def _token(pid: int, root: str) -> str:
         except ValueError:
             return raw
         if isinstance(d, dict):
-            return str(d.get("token") or "")
+            return str(d.get("peerToken") or d.get("token") or "")
         return d if isinstance(d, str) else raw
     return ""
 
