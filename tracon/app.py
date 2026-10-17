@@ -1136,7 +1136,7 @@ class LaneApp(App):
             text = compose(self.statuses[agent.id])
             box = inbox.find_inbox(self.session.ref.session_id)
             if box:
-                self.send_nudge(box.socket, text, agent.description)
+                self.send_nudge(box.socket, text, agent.description, box.token)
             else:
                 self.copy_text(text)
                 self.notify("no live inbox for the lead; copied the nudge to paste into its session", timeout=5)
@@ -1156,9 +1156,9 @@ class LaneApp(App):
         self.tick()
 
     @work(thread=True, group="message")
-    def send_nudge(self, sock: str, text: str, about: str) -> None:
+    def send_nudge(self, sock: str, text: str, about: str, token: str = "") -> None:
         try:
-            inbox.send(sock, text)
+            inbox.send(sock, text, token=token)
             self.call_from_thread(self.notify, f"nudged the lead about {about}", timeout=4)
         except OSError as e:
             self.call_from_thread(self.notify, f"nudge failed: {e}", severity="error", timeout=6)

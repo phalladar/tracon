@@ -3,8 +3,9 @@
 Each running Claude Code process registers itself in `~/.claude/sessions/<pid>.json` (read here,
 never written) and listens on a Unix socket named there (a named pipe on Windows). A message is
 one JSON line; the session shows it as coming from another session, between tool calls or as a new
-turn when idle. The auth token in the `.key` files is optional on macOS and Linux, so this never
-opens them.
+turn when idle. The auth token in `<pid>.<hash>.key` is optional on macOS and Linux, so this never
+opens it there; a Windows pipe drops unauthenticated messages, so there the lead's key is read when
+a nudge is sent.
 **The only module that knows the inbox format.**
 """
 
@@ -26,6 +27,7 @@ class Inbox:
     socket: str
     name: str = ""
     status: str = ""  # idle | busy | ...
+    token: str = ""  # auth token, read only for a Windows pipe
 
 
 @dataclass
@@ -62,9 +64,28 @@ def live_sessions(root: str = SESSIONS_DIR) -> list[Live]:
 def find_inbox(session_id: str, root: str = SESSIONS_DIR) -> Inbox | None:
     """The live process holding `session_id` open, or None if it isn't running."""
     for lv in live_sessions(root):
-        if lv.session_id == session_id and lv.socket and (_is_pipe(lv.socket) or os.path.exists(lv.socket)):
+        if lv.session_id == session_id and lv.socket and _is_pipe(lv.socket):
+            return Inbox(lv.pid, lv.socket, lv.name, lv.status, _token(lv.pid, root))
+        if lv.session_id == session_id and lv.socket and os.path.exists(lv.socket):
             return Inbox(lv.pid, lv.socket, lv.name, lv.status)
     return None
+
+
+def _token(pid: int, root: str) -> str:
+    """The token in `<pid>.<hash>.key`: a bare string or JSON with a `token` field; "" if none."""
+    for f in Path(root).glob(f"{pid}.*.key"):
+        try:
+            raw = f.read_text().strip()
+        except OSError:
+            continue
+        try:
+            d = json.loads(raw)
+        except ValueError:
+            return raw
+        if isinstance(d, dict):
+            return str(d.get("token") or "")
+        return d if isinstance(d, str) else raw
+    return ""
 
 
 def _is_pipe(path: str) -> bool:
@@ -105,9 +126,12 @@ def _alive_win(pid: int) -> bool:
         k32.CloseHandle(h)
 
 
-def send(sock_path: str, text: str, timeout: float = 3.0) -> None:
-    """Deliver `text` as one message. Raises OSError if the socket can't be reached."""
+def send(sock_path: str, text: str, timeout: float = 3.0, token: str = "") -> None:
+    """Deliver `text` as one message, after an auth line if there's a token. Raises OSError if
+    the socket can't be reached."""
     line = json.dumps({"type": "user", "message": {"role": "user", "content": text}}) + "\n"
+    if token:
+        line = json.dumps({"type": "auth", "token": token}) + "\n" + line
     if _is_pipe(sock_path):  # r+b opens the existing pipe; w would ask to create it
         with open(sock_path, "r+b", buffering=0) as f:
             f.write(line.encode())

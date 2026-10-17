@@ -87,7 +87,30 @@ def test_find_inbox_takes_a_pipe_without_opening_it(tmp_path):
     pipe = f"{PIPE}{os.getpid()}-find"
     register(tmp_path, os.getpid(), "sess-1", pipe)
     ib = find_inbox("sess-1", str(tmp_path))
-    assert ib and ib.socket == pipe
+    assert ib and ib.socket == pipe and ib.token == ""
+
+
+@windows_only
+def test_find_inbox_reads_the_key_only_for_a_pipe(tmp_path, sockdir):
+    pid = os.getpid()
+    (tmp_path / f"{pid}.ab12.key").write_text("tok-bare\n")
+    (tmp_path / f"{pid}1.cd34.key").write_text("someone-else")  # pid prefix, not this pid
+    register(tmp_path, pid, "sess-1", f"{PIPE}{pid}-key")
+    assert find_inbox("sess-1", str(tmp_path)).token == "tok-bare"
+    sock = os.path.join(sockdir, "a.sock")
+    open(sock, "w").close()
+    register(tmp_path, pid, "sess-1", sock)
+    assert find_inbox("sess-1", str(tmp_path)).token == ""  # a socket never needs it
+
+
+def test_token_takes_a_bare_or_json_key(tmp_path):
+    from tracon.inbox import _token
+
+    (tmp_path / "7.aa.key").write_text('{"token": "tok-json", "v": 1}')
+    (tmp_path / "8.bb.key").write_text('"tok-quoted"')
+    assert _token(7, str(tmp_path)) == "tok-json"
+    assert _token(8, str(tmp_path)) == "tok-quoted"
+    assert _token(9, str(tmp_path)) == ""
 
 
 @windows_only
@@ -107,10 +130,11 @@ def test_alive_on_windows_never_signals():
 
 
 @windows_only
-def test_send_writes_one_user_line_to_a_pipe():
+@pytest.mark.parametrize("token", ["", "tok-1"])
+def test_send_writes_one_user_line_to_a_pipe(token):
     import _winapi
 
-    pipe = f"{PIPE}{os.getpid()}-send"
+    pipe = f"{PIPE}{os.getpid()}-send{token}"
     h = _winapi.CreateNamedPipe(
         pipe, _winapi.PIPE_ACCESS_DUPLEX, _winapi.PIPE_WAIT, 1, 65536, 65536, 0, _winapi.NULL,  # byte mode
     )
@@ -130,12 +154,13 @@ def test_send_writes_one_user_line_to_a_pipe():
     t = threading.Thread(target=serve)
     t.start()
     try:
-        send(pipe, 'stop "now"\nplease')
+        send(pipe, 'stop "now"\nplease', token=token)
         t.join(timeout=3)
     finally:
         _winapi.CloseHandle(h)
-    assert got and got[0].endswith(b"\n") and got[0].count(b"\n") == 1
-    assert json.loads(got[0]) == {"type": "user", "message": {"role": "user", "content": 'stop "now"\nplease'}}
+    lines = [json.loads(line) for line in got[0].splitlines()] if got and got[0].endswith(b"\n") else []
+    assert lines[-1:] == [{"type": "user", "message": {"role": "user", "content": 'stop "now"\nplease'}}]
+    assert lines[:-1] == ([{"type": "auth", "token": token}] if token else [])
 
 
 @windows_only
