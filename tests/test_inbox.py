@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import socket
+import sys
 import tempfile
 import threading
 from datetime import timedelta
@@ -17,7 +18,7 @@ from test_lane import T0, lane, refusal, ts  # noqa: F401  (fixture)
 
 @pytest.fixture
 def sockdir():
-    d = tempfile.mkdtemp(prefix="tr", dir="/tmp")  # Unix socket paths max out near 104 bytes
+    d = tempfile.mkdtemp(prefix="tr", dir=None if sys.platform == "win32" else "/tmp")  # Unix socket paths max out near 104 bytes
     yield d
     shutil.rmtree(d, ignore_errors=True)
 
@@ -45,6 +46,12 @@ def test_find_inbox_needs_the_socket(tmp_path):
     assert find_inbox("sess-1", str(tmp_path)) is None
 
 
+unix_only = pytest.mark.skipif(sys.platform == "win32", reason="Unix sockets")
+windows_only = pytest.mark.skipif(sys.platform != "win32", reason="named pipes")
+PIPE = r"\\.\pipe\LOCAL\tracon-test-"
+
+
+@unix_only
 def test_send_writes_one_user_line(sockdir):
     path = os.path.join(sockdir, "s.sock")
     srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -69,9 +76,72 @@ def test_send_writes_one_user_line(sockdir):
     assert json.loads(got[0]) == {"type": "user", "message": {"role": "user", "content": 'stop "now"\nplease'}}
 
 
+@unix_only
 def test_send_to_missing_socket_raises(sockdir):
     with pytest.raises(OSError):
         send(os.path.join(sockdir, "gone.sock"), "hi")
+
+
+@windows_only
+def test_find_inbox_takes_a_pipe_without_opening_it(tmp_path):
+    pipe = f"{PIPE}{os.getpid()}-find"
+    register(tmp_path, os.getpid(), "sess-1", pipe)
+    ib = find_inbox("sess-1", str(tmp_path))
+    assert ib and ib.socket == pipe
+
+
+@windows_only
+def test_alive_on_windows_never_signals():
+    import subprocess
+
+    from tracon.inbox import _alive
+
+    p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        assert _alive(p.pid)
+        assert _alive(p.pid)  # still there: probing didn't kill it
+    finally:
+        p.kill()
+        p.wait()
+    assert not _alive(p.pid)
+
+
+@windows_only
+def test_send_writes_one_user_line_to_a_pipe():
+    import _winapi
+
+    pipe = f"{PIPE}{os.getpid()}-send"
+    h = _winapi.CreateNamedPipe(
+        pipe, _winapi.PIPE_ACCESS_DUPLEX, _winapi.PIPE_WAIT, 1, 65536, 65536, 0, _winapi.NULL,  # byte mode
+    )
+    got = []
+
+    def serve():
+        _winapi.ConnectNamedPipe(h, False)
+        buf = b""
+        try:
+            while True:
+                chunk, _ = _winapi.ReadFile(h, 4096)
+                buf += chunk
+        except OSError:  # the writer closed
+            pass
+        got.append(buf)
+
+    t = threading.Thread(target=serve)
+    t.start()
+    try:
+        send(pipe, 'stop "now"\nplease')
+        t.join(timeout=3)
+    finally:
+        _winapi.CloseHandle(h)
+    assert got and got[0].endswith(b"\n") and got[0].count(b"\n") == 1
+    assert json.loads(got[0]) == {"type": "user", "message": {"role": "user", "content": 'stop "now"\nplease'}}
+
+
+@windows_only
+def test_send_to_missing_pipe_raises():
+    with pytest.raises(OSError):
+        send(f"{PIPE}{os.getpid()}-gone", "hi")
 
 
 def test_compose_names_agent_flags_and_advice(lane):  # noqa: F811
