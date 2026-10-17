@@ -125,3 +125,18 @@ def test_cli_once_text_not_json(capsys, monkeypatch, tmp_path):
     assert "BLOCKED" in captured.out
     with pytest.raises(json.JSONDecodeError):
         json.loads(captured.out)
+
+
+def test_cli_once_survives_a_non_utf8_pipe():
+    """Windows pipes default to the ANSI code page, which can't encode the state icons."""
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0"}
+    r = subprocess.run(
+        [sys.executable, "-c", "import sys; from tracon.cli import main; sys.exit(main(['--demo', '--once']))"],
+        capture_output=True, env=env, timeout=60,
+    )
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
+    assert "⛔".encode() in r.stdout
